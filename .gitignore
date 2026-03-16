@@ -1,0 +1,7 @@
+node_modules/
+dist/
+.env
+.tr_api_cookies.json
+.DS_Store
+.idea/
+.claude/
