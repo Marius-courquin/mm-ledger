@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "tsx src/main.ts"
+    "start": "bun run src/main.ts"
   },
   "keywords": [],
   "author": "",

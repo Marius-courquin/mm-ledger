@@ -1,5 +1,5 @@
 import "dotenv/config";
-import { TradeRepublicApi, createMessage, type Portfolio } from "trapi";
+import { TradeRepublicApi, createMessage } from "trapi";
 
 const phoneNumber = process.env["TR_PHONE_NUMBER"];
 const pin = process.env["TR_PIN"];
@@ -20,46 +20,93 @@ async function main() {
 
   console.log("Logged in successfully!\n");
 
-  // Debug: check available accounts first
-  api.subscribeOnce(createMessage("accountPairs"), (data) => {
-    if (!data) return;
-    console.log("Account pairs:", data);
-  });
+  // Helper: safely parse data (some endpoints return plain text, not JSON)
+  const safeParse = (data: string) => {
+    try {
+      return JSON.parse(data);
+    } catch {
+      return data;
+    }
+  };
 
-  // Debug: check portfolio status
-  api.subscribeOnce(createMessage("portfolioStatus"), (data) => {
-    if (!data) return;
-    console.log("Portfolio status:", data);
-  });
+  // Helper: promisify subscribeOnce
+  const sub = <T extends Parameters<typeof createMessage>[0]>(
+    type: T,
+    opts?: any
+  ): Promise<any> =>
+    new Promise((resolve) => {
+      api.subscribeOnce(createMessage(type, opts), (data) => {
+        resolve(data ? safeParse(data) : null);
+      });
+    });
 
-  api.subscribeOnce(createMessage("compactPortfolioByType"), (data) => {
-    if (!data) return;
+  // ---- Discover accounts dynamically ----
+  const { accounts } = (await sub("accountPairs")) as {
+    accounts: {
+      securitiesAccountNumber: string;
+      cashAccountNumber: string;
+      productType: string;
+      currency: string;
+    }[];
+  };
 
-    const portfolio: Portfolio = JSON.parse(data);
-    console.log("Portfolio raw:", data);
-    const categories = portfolio.categories.filter(
-      (c) => c.categoryType !== "cryptos"
+  const productTypeLabel: Record<string, string> = {
+    DEFAULT: "CTO",
+    TAX_WRAPPER: "PEA",
+  };
+
+  // Cash balances
+  const cashData = await sub("cash");
+  const cashEntries: any[] = Array.isArray(cashData) ? cashData : [cashData];
+
+  // Show all cash accounts (including current account / compte courant)
+  console.log("===== All cash balances =====");
+  for (const entry of cashEntries) {
+    const matchedAcc = accounts.find(
+      (a) => a.cashAccountNumber === entry.accountNumber
+    );
+    const label = matchedAcc
+      ? productTypeLabel[matchedAcc.productType] ?? matchedAcc.productType
+      : "Compte courant";
+    console.log(`  ${label} (${entry.accountNumber}): ${entry.amount} ${entry.currencyId}`);
+  }
+
+  // Available cash / payout
+  const availableCash = await sub("availableCash");
+  const availablePayout = await sub("availableCashForPayout");
+  console.log(`\n===== Available cash =====`);
+  console.log(`  Available:    ${JSON.stringify(availableCash)}`);
+  console.log(`  For payout:   ${JSON.stringify(availablePayout)}`);
+
+  for (const acc of accounts) {
+    const label = productTypeLabel[acc.productType] ?? acc.productType;
+    const cashEntry = cashEntries.find(
+      (e: any) => e.accountNumber === acc.cashAccountNumber
     );
 
-    if (!categories.length) {
-      console.log("No non-crypto positions found.");
-      return;
+    console.log(`\n===== ${label} (${acc.securitiesAccountNumber}) =====`);
+    console.log(`  Cash: ${cashEntry ? `${cashEntry.amount} ${cashEntry.currencyId}` : "N/A"}`);
+
+    // Portfolio for this account
+    const portfolio = await sub("compactPortfolioByType", {
+      secAccNo: acc.securitiesAccountNumber,
+    });
+
+    if (!portfolio?.categories?.length) {
+      console.log("  Positions: (none)");
+      continue;
     }
 
-    const companies = Array.from(
-      new Set(
-        categories.flatMap((category) =>
-          category.positions.map((pos) =>
-            pos.derivativeInfo
-              ? pos.derivativeInfo.underlying.shortName
-              : pos.name
-          )
-        )
-      )
-    );
-
-    console.log("Portfolio companies:", companies);
-  });
+    for (const cat of portfolio.categories) {
+      console.log(`  --- ${cat.categoryType} ---`);
+      for (const pos of cat.positions) {
+        const name = pos.derivativeInfo
+          ? pos.derivativeInfo.underlying.shortName
+          : pos.name;
+        console.log(`    ${name} | qty: ${pos.netSize} | avg buy-in: ${pos.averageBuyIn}€`);
+      }
+    }
+  }
 
   // api.subscribe(
   //   createMessage("ticker", { id: "US88160R1014.LSX" }),
