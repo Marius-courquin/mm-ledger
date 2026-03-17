@@ -5,3 +5,8 @@ dist/
 .DS_Store
 .idea/
 .claude/
+banque/venv/
+banque/config.py
+banque/__pycache__/
+docs/superpowers/
+src/data/

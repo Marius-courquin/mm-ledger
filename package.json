@@ -3,7 +3,11 @@
   "version": "1.0.0",
   "type": "module",
   "scripts": {
-    "start": "bun run src/main.ts"
+    "start": "bun run src/main.ts",
+    "server": "bun run src/server/index.ts",
+    "dev": "bun run --bun vite --config vite.config.ts",
+    "dev:all": "bun run server & bun run dev",
+    "build": "bun run --bun vite build --config vite.config.ts"
   },
   "keywords": [],
   "author": "",
@@ -11,12 +15,21 @@
   "description": "",
   "devDependencies": {
     "@types/node": "^25.5.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^6.0.1",
     "dotenv": "^17.3.1",
     "ts-node": "^10.9.2",
     "tsx": "^4.21.0",
-    "typescript": "^5.9.3"
+    "typescript": "^5.9.3",
+    "vite": "^8.0.0"
   },
   "dependencies": {
+    "lucide-react": "^0.577.0",
+    "react": "^19.2.4",
+    "react-dom": "^19.2.4",
+    "react-router-dom": "^7.13.1",
+    "recharts": "^3.8.0",
     "trapi": "github:NightOwl07/trade-republic-api"
   }
 }
