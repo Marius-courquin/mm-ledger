@@ -1,10 +1,6 @@
-import "dotenv/config";
 import { TradeRepublicApi, createMessage } from "trapi";
-import { writeFileSync, readFileSync, existsSync } from "fs";
 import { join } from "path";
 import { spawn, type Subprocess } from "bun";
-
-const ENV_PATH = join(import.meta.dir, "../../.env");
 
 // --- Helpers ---
 const safeParse = (data: string) => {
@@ -25,6 +21,8 @@ let api: TradeRepublicApi | null = null;
 let connected = false;
 let waitingForPin = false;
 let pinResolver: ((pin: string) => void) | null = null;
+let trPhoneNumber = "";
+let trPin = "";
 
 function sub<T extends Parameters<typeof createMessage>[0]>(
   type: T,
@@ -46,14 +44,12 @@ const PRODUCT_LABELS: Record<string, string> = {
 };
 
 async function connectTR(): Promise<"connected" | "need_pin" | "failed" | "no_credentials"> {
-  const phoneNumber = process.env["TR_PHONE_NUMBER"];
-  const pin = process.env["TR_PIN"];
-  if (!phoneNumber || !pin) {
+  if (!trPhoneNumber || !trPin) {
     connected = false;
     return "no_credentials";
   }
   try {
-    api = new TradeRepublicApi(phoneNumber, pin);
+    api = new TradeRepublicApi(trPhoneNumber, trPin);
 
     // Provide a callback that waits for PIN from the frontend
     const getDevicePin = (): Promise<string> => {
@@ -85,6 +81,9 @@ let bpWaiting2FA: false | "sms" | "app" = false;
 let bp2FAMessage = "";
 let bpAccounts: any[] = [];
 let bpResponseResolver: ((data: any) => void) | null = null;
+let bpLogin = "";
+let bpPassword = "";
+let bpRegion = "";
 
 function sendBP(action: string, params: Record<string, string> = {}) {
   if (!bpBridge?.stdin) throw new Error("BP bridge not running");
@@ -217,8 +216,8 @@ Bun.serve({
             name: "Trade Republic",
             connected,
             waitingForPin,
-            phoneNumber: process.env["TR_PHONE_NUMBER"] ?? "",
-            hasPin: !!process.env["TR_PIN"],
+            phoneNumber: trPhoneNumber,
+            hasPin: !!trPin,
           },
           {
             id: "banque-populaire",
@@ -226,9 +225,9 @@ Bun.serve({
             connected: bpConnected,
             waiting2FA: bpWaiting2FA,
             message2FA: bp2FAMessage,
-            login: process.env["BP_LOGIN"] ?? "",
-            hasPassword: !!process.env["BP_PASSWORD"],
-            region: process.env["BP_REGION"] ?? "",
+            login: bpLogin,
+            hasPassword: !!bpPassword,
+            region: bpRegion,
             accounts: bpAccounts,
           },
         ],
@@ -241,13 +240,9 @@ Bun.serve({
       if (!phoneNumber || !pin) {
         return error("phoneNumber and pin are required", 400);
       }
-      // Write to .env (preserve BP creds)
-      const existingEnv = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
-      const bpLines = existingEnv.split("\n").filter(l => l.startsWith("BP_"));
-      writeFileSync(ENV_PATH, `TR_PHONE_NUMBER=${phoneNumber}\nTR_PIN=${pin}\n${bpLines.join("\n")}${bpLines.length ? "\n" : ""}`);
-      // Reload env
-      process.env["TR_PHONE_NUMBER"] = phoneNumber;
-      process.env["TR_PIN"] = pin;
+      // Store in memory only — no disk persistence
+      trPhoneNumber = phoneNumber;
+      trPin = pin;
       // Start connection (non-blocking if it needs 2FA)
       connectTR().then((status) => {
         console.log("TR connect result:", status);
@@ -456,14 +451,10 @@ Bun.serve({
         return error("login, password, and region are required", 400);
       }
 
-      // Write to .env (preserve TR creds)
-      const existingEnv = existsSync(ENV_PATH) ? readFileSync(ENV_PATH, "utf-8") : "";
-      const trLines = existingEnv.split("\n").filter(l => l.startsWith("TR_"));
-      writeFileSync(ENV_PATH, `${trLines.join("\n")}${trLines.length ? "\n" : ""}BP_LOGIN=${login}\nBP_PASSWORD=${password}\nBP_REGION=${region}\n`);
-
-      process.env["BP_LOGIN"] = login;
-      process.env["BP_PASSWORD"] = password;
-      process.env["BP_REGION"] = region;
+      // Store in memory only
+      bpLogin = login;
+      bpPassword = password;
+      bpRegion = region;
 
       startBPBridge();
       await new Promise(r => setTimeout(r, 500));
@@ -522,20 +513,4 @@ Bun.serve({
 });
 
 console.log("Server running on http://localhost:3001");
-
-// Connect on startup (non-blocking)
-connectTR().then((status) => {
-  console.log("TR startup:", status);
-});
-
-// Connect BP on startup if credentials exist
-if (process.env["BP_LOGIN"] && process.env["BP_PASSWORD"] && process.env["BP_REGION"]) {
-  startBPBridge();
-  setTimeout(() => {
-    sendBP("connect", {
-      login: process.env["BP_LOGIN"]!,
-      password: process.env["BP_PASSWORD"]!,
-      region: process.env["BP_REGION"]!,
-    });
-  }, 1000);
-}
+console.log("No credentials stored — configure connectors via the Settings page.");
