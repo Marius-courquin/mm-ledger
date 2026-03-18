@@ -1,4 +1,5 @@
 import { TradeRepublicApi, createMessage } from "trapi";
+import { IBApi, EventName, Contract } from "@stoqey/ib";
 import { join } from "path";
 import { spawn, type Subprocess } from "bun";
 
@@ -177,6 +178,124 @@ function handleBPMessage(msg: any) {
   }
 }
 
+// --- IBKR API connection (via IB Gateway) ---
+let ibApi: IBApi | null = null;
+let ibConnected = false;
+let ibAccounts: string[] = [];
+let ibPositions: any[] = [];
+let ibAccountValues: Record<string, Record<string, string>> = {};
+
+async function connectIBKR(host: string, port: number): Promise<boolean> {
+  return new Promise((resolve) => {
+    let resolved = false;
+    const done = (result: boolean) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+
+    // Timeout after 10s
+    setTimeout(() => {
+      console.error("IBKR connection timeout");
+      done(false);
+    }, 10000);
+
+    try {
+      if (ibApi) {
+        try { ibApi.disconnect(); } catch {}
+      }
+
+      console.log(`IBKR: connecting to ${host}:${port}...`);
+      ibApi = new IBApi({ host, port, clientId: 1 });
+
+      ibApi.on(EventName.connected, () => {
+        console.log("IBKR connected!");
+        ibConnected = true;
+        ibApi!.reqManagedAccts();
+        done(true);
+      });
+
+      ibApi.on(EventName.error, (err: Error, code: number) => {
+        console.error(`IBKR error [${code}]:`, err.message);
+        if (!ibConnected) done(false);
+      });
+
+      ibApi.on(EventName.managedAccounts, (accountsList: string) => {
+        ibAccounts = accountsList.split(",").filter(Boolean);
+        console.log("IBKR accounts:", ibAccounts);
+        // Request account summary and positions for all accounts
+        for (const acc of ibAccounts) {
+          ibApi!.reqAccountUpdates(true, acc);
+        }
+        ibApi!.reqPositions();
+      });
+
+      ibApi.on(EventName.updateAccountValue, (key: string, value: string, currency: string, accountName: string) => {
+        if (!ibAccountValues[accountName]) ibAccountValues[accountName] = {};
+        ibAccountValues[accountName][`${key}:${currency}`] = value;
+      });
+
+      ibApi.on(EventName.position, (account: string, contract: Contract, pos: number, avgCost: number) => {
+        if (pos === 0) return; // skip closed positions
+        // Update or add position
+        const existing = ibPositions.findIndex(
+          (p) => p.account === account && p.conId === contract.conId
+        );
+        const entry = {
+          account,
+          conId: contract.conId,
+          symbol: contract.symbol,
+          secType: contract.secType,
+          exchange: contract.exchange,
+          currency: contract.currency,
+          quantity: pos,
+          avgCost,
+          value: pos * avgCost,
+        };
+        if (existing >= 0) {
+          ibPositions[existing] = entry;
+        } else {
+          ibPositions.push(entry);
+        }
+      });
+
+      ibApi.on(EventName.positionEnd, () => {
+        console.log(`IBKR positions loaded: ${ibPositions.length}`);
+      });
+
+      ibApi.on(EventName.disconnected, () => {
+        console.log("IBKR disconnected");
+        ibConnected = false;
+      });
+
+      ibApi.on(EventName.received, (...args: any[]) => {
+        console.log("IBKR received:", args[0]?.toString?.()?.slice(0, 100));
+      });
+
+      ibApi.on(EventName.server, (version: number, connectionTime: string) => {
+        console.log(`IBKR server: version=${version} time=${connectionTime}`);
+      });
+
+      ibApi.connect();
+      console.log("IBKR: connect() called");
+    } catch (e) {
+      console.error("IBKR connect failed:", e);
+      done(false);
+    }
+  });
+}
+
+function disconnectIBKR() {
+  if (ibApi) {
+    try { ibApi.disconnect(); } catch {}
+  }
+  ibApi = null;
+  ibConnected = false;
+  ibAccounts = [];
+  ibPositions = [];
+  ibAccountValues = {};
+}
+
 // --- HTTP Server ---
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
@@ -230,6 +349,12 @@ Bun.serve({
             region: bpRegion,
             accounts: bpAccounts,
           },
+          {
+            id: "interactive-brokers",
+            name: "Interactive Brokers",
+            connected: ibConnected,
+            accounts: ibAccounts,
+          },
         ],
       });
     }
@@ -276,8 +401,8 @@ Bun.serve({
       return json({ message: "Connecting...", waitingForPin });
     }
 
-    // --- Require TR connection for TR data endpoints (not BP routes) ---
-    if (!path.startsWith("/api/bp/") && (!connected || !api)) {
+    // --- Require TR connection for TR data endpoints (not BP/IBKR routes) ---
+    if (!path.startsWith("/api/bp/") && !path.startsWith("/api/ibkr/") && (!connected || !api)) {
       return error("TR API not connected. Configure credentials in Settings.", 503);
     }
 
@@ -506,6 +631,46 @@ Bun.serve({
       sendBP("get_accounts");
       await promise;
       return json({ accounts: bpAccounts });
+    }
+
+    // --- IBKR Settings ---
+    if (path === "/api/ibkr/connect" && req.method === "POST") {
+      const body = await req.json();
+      const host = body.host || "127.0.0.1";
+      const port = body.port || 4002; // 4002=paper, 4001=live
+      const ok = await connectIBKR(host, port);
+      return json({ connected: ok, accounts: ibAccounts });
+    }
+
+    if (path === "/api/ibkr/disconnect" && req.method === "POST") {
+      disconnectIBKR();
+      return json({ connected: false });
+    }
+
+    // --- IBKR Accounts ---
+    if (path === "/api/ibkr/accounts" && req.method === "GET") {
+      if (!ibConnected) return error("IBKR not connected", 503);
+      // Build account summaries
+      const accounts = ibAccounts.map((acc) => {
+        const values = ibAccountValues[acc] || {};
+        return {
+          id: acc,
+          netLiquidation: parseFloat(values["NetLiquidation:USD"] || values["NetLiquidation:EUR"] || "0"),
+          totalCash: parseFloat(values["TotalCashValue:USD"] || values["TotalCashValue:EUR"] || "0"),
+          unrealizedPnL: parseFloat(values["UnrealizedPnL:USD"] || values["UnrealizedPnL:EUR"] || "0"),
+          realizedPnL: parseFloat(values["RealizedPnL:USD"] || values["RealizedPnL:EUR"] || "0"),
+          buyingPower: parseFloat(values["BuyingPower:USD"] || values["BuyingPower:EUR"] || "0"),
+          currency: values["NetLiquidation:EUR"] ? "EUR" : "USD",
+          raw: values,
+        };
+      });
+      return json({ accounts });
+    }
+
+    // --- IBKR Positions ---
+    if (path === "/api/ibkr/positions" && req.method === "GET") {
+      if (!ibConnected) return error("IBKR not connected", 503);
+      return json({ positions: ibPositions });
     }
 
     return error("Not found", 404);

@@ -97,6 +97,8 @@ const Dashboard: React.FC = () => {
   const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [bpAccounts, setBpAccounts] = useState<{ id: string; label: string; balance: number; currency: string }[]>([]);
+  const [ibkrAccounts, setIbkrAccounts] = useState<any[]>([]);
+  const [ibkrPositions, setIbkrPositions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -128,6 +130,15 @@ const Dashboard: React.FC = () => {
           .then(r => r.ok ? r.json() : null)
           .then(data => { if (data?.accounts) setBpAccounts(data.accounts); })
           .catch(() => {});
+
+        // Load IBKR data (non-blocking)
+        Promise.all([
+          fetch("/api/ibkr/accounts").then(r => r.ok ? r.json() : null),
+          fetch("/api/ibkr/positions").then(r => r.ok ? r.json() : null),
+        ]).then(([accData, posData]) => {
+          if (accData?.accounts) setIbkrAccounts(accData.accounts);
+          if (posData?.positions) setIbkrPositions(posData.positions);
+        }).catch(() => {});
 
         // Load live prices
         const pricesRes = await fetch("/api/prices");
@@ -199,7 +210,9 @@ const Dashboard: React.FC = () => {
 
   // (charts are loaded per-section in the main useEffect)
 
-  const totalCash = cash.reduce((sum, c) => sum + c.amount, 0) + bpAccounts.reduce((sum, a) => sum + a.balance, 0);
+  const ibkrTotalCash = ibkrAccounts.reduce((sum, a) => sum + (a.totalCash || 0), 0);
+  const ibkrTotalValue = ibkrAccounts.reduce((sum, a) => sum + (a.netLiquidation || 0), 0);
+  const totalCash = cash.reduce((sum, c) => sum + c.amount, 0) + bpAccounts.reduce((sum, a) => sum + a.balance, 0) + ibkrTotalCash;
   // Helper to get current value of a position
   const posValue = (pos: Position) => {
     const qty = parseFloat(pos.netSize) || 0;
@@ -219,7 +232,8 @@ const Dashboard: React.FC = () => {
       )
     );
   }, 0);
-  const totalBalance = totalCash + totalPositions;
+  const ibkrPositionsValue = ibkrTotalValue - ibkrTotalCash;
+  const totalBalance = totalCash + totalPositions + ibkrPositionsValue;
 
   // Group positions into logical sections
   const CATEGORY_SECTIONS: Record<string, string> = {
@@ -727,6 +741,68 @@ const Dashboard: React.FC = () => {
           </div>
         );
       })}
+
+      {/* IBKR Positions */}
+      {ibkrPositions.length > 0 && (
+        <div style={{ ...card, marginBottom: theme.spacing.xl }}>
+          <div
+            onClick={() => toggleSection("IBKR")}
+            style={{
+              display: "flex", alignItems: "center", gap: theme.spacing.sm,
+              marginBottom: theme.spacing.md, cursor: "pointer", userSelect: "none",
+            }}
+          >
+            <span style={{ fontSize: 18 }}>🏛️</span>
+            <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.colors.textPrimary, flex: 1 }}>
+              Interactive Brokers
+            </h2>
+            <span className="tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: theme.colors.accentGold, marginRight: theme.spacing.xs }}>
+              €{fmt(ibkrTotalValue)}
+            </span>
+            <span className="tabular-nums" style={{
+              fontSize: 13, fontWeight: 600,
+              color: ibkrAccounts[0]?.unrealizedPnL >= 0 ? theme.colors.gain : theme.colors.loss,
+              marginRight: theme.spacing.sm,
+            }}>
+              {ibkrAccounts[0]?.unrealizedPnL >= 0 ? "+" : ""}€{fmt(ibkrAccounts[0]?.unrealizedPnL || 0)}
+            </span>
+            <span style={{ fontSize: 12, color: theme.colors.textMuted, marginRight: theme.spacing.sm }}>
+              {ibkrPositions.length} position{ibkrPositions.length > 1 ? "s" : ""}
+            </span>
+            <span style={{ color: theme.colors.textMuted, fontSize: 14, transition: "transform 0.2s", transform: (expandedSections["IBKR"] ?? false) ? "rotate(180deg)" : "rotate(0)" }}>
+              ▼
+            </span>
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column", gap: theme.spacing.sm }}>
+            {ibkrPositions.map((pos, i) => (
+              <div
+                key={i}
+                style={{
+                  display: "flex", alignItems: "center", justifyContent: "space-between",
+                  padding: theme.spacing.md, background: theme.colors.surfaceElevated,
+                  borderRadius: theme.radius.md, border: `1px solid ${theme.colors.border}`,
+                }}
+              >
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>{pos.symbol}</div>
+                  <div style={{ fontSize: 12, color: theme.colors.textMuted }}>
+                    {pos.secType} · {pos.currency}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right" }}>
+                  <div className="tabular-nums" style={{ fontSize: 14, fontWeight: 600 }}>
+                    €{fmt(pos.value)}
+                  </div>
+                  <div className="tabular-nums" style={{ fontSize: 12, color: theme.colors.textMuted }}>
+                    {pos.quantity} × €{fmt(pos.avgCost)}
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 };

@@ -67,6 +67,14 @@ const Settings: React.FC = () => {
   const [message, setMessage] = useState("");
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // IBKR state
+  const [ibHost, setIbHost] = useState("127.0.0.1");
+  const [ibPort, setIbPort] = useState("4002");
+  const [ibConnected, setIbConnected] = useState(false);
+  const [ibLoading, setIbLoading] = useState(false);
+  const [ibMessage, setIbMessage] = useState("");
+  const [ibAccounts, setIbAccounts] = useState<string[]>([]);
+
   // BP state
   const [bpLogin, setBpLogin] = useState("");
   const [bpPassword, setBpPassword] = useState("");
@@ -110,6 +118,11 @@ const Settings: React.FC = () => {
         if (!bpLogin && bp.login) setBpLogin(bp.login);
         if (bp.region) setBpRegion(bp.region);
         if (bp.connected) setBpLoading(false);
+      }
+      const ib = data.connectors?.find((c: any) => c.id === "interactive-brokers");
+      if (ib) {
+        setIbConnected(ib.connected);
+        setIbAccounts(ib.accounts || []);
       }
     } catch {}
   };
@@ -215,6 +228,33 @@ const Settings: React.FC = () => {
     } catch {
       setBpMessage("Erreur de validation");
     }
+  };
+
+  const handleIbConnect = async () => {
+    setIbLoading(true);
+    setIbMessage("Connecting to IB Gateway...");
+    try {
+      const res = await fetch("/api/ibkr/connect", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ host: ibHost, port: parseInt(ibPort) }),
+      });
+      const data = await res.json();
+      setIbConnected(data.connected);
+      setIbAccounts(data.accounts || []);
+      setIbMessage(data.connected ? `Connected! ${data.accounts?.length || 0} account(s)` : "Connection failed");
+    } catch {
+      setIbMessage("Error connecting");
+    } finally {
+      setIbLoading(false);
+    }
+  };
+
+  const handleIbDisconnect = async () => {
+    await fetch("/api/ibkr/disconnect", { method: "POST" });
+    setIbConnected(false);
+    setIbAccounts([]);
+    setIbMessage("");
   };
 
   // Stop loading when connected
@@ -519,6 +559,108 @@ const Settings: React.FC = () => {
               </button>
             </div>
           )}
+        </div>
+      </div>
+
+      {/* Interactive Brokers connector card */}
+      <div style={{ ...card, marginTop: theme.spacing.lg }}>
+        <div style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          marginBottom: theme.spacing.lg,
+        }}>
+          <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.sm }}>
+            <div style={{
+              width: 44, height: 44, borderRadius: theme.radius.md,
+              background: "linear-gradient(135deg, #dc143c, #8b0000)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700, color: "#fff",
+            }}>IBKR</div>
+            <div>
+              <h3 style={{ fontSize: 16, fontWeight: 600, color: theme.colors.textPrimary }}>
+                Interactive Brokers
+              </h3>
+              <p style={{ fontSize: 12, color: theme.colors.textMuted }}>Brokerage connector (IB Gateway)</p>
+            </div>
+          </div>
+
+          <div style={{
+            display: "flex", alignItems: "center", gap: theme.spacing.xs,
+            padding: `${theme.spacing.xs}px ${theme.spacing.sm}px`,
+            borderRadius: theme.radius.sm,
+            background: ibConnected ? `${theme.colors.accentGold}15` : `${theme.colors.loss}15`,
+            border: `1px solid ${ibConnected ? `${theme.colors.accentGold}30` : `${theme.colors.loss}30`}`,
+          }}>
+            {ibConnected ? (
+              <CheckCircle size={14} color={theme.colors.accentGold} />
+            ) : (
+              <XCircle size={14} color={theme.colors.loss} />
+            )}
+            <span style={{
+              fontSize: 12, fontWeight: 600,
+              color: ibConnected ? theme.colors.accentGold : theme.colors.loss,
+            }}>
+              {ibConnected ? `Connected (${ibAccounts.length} acc)` : "Disconnected"}
+            </span>
+          </div>
+        </div>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: theme.spacing.md }}>
+          {!ibConnected && (
+            <div style={{
+              padding: theme.spacing.md,
+              background: theme.colors.surfaceElevated,
+              borderRadius: theme.radius.md,
+              border: `1px solid ${theme.colors.border}`,
+              fontSize: 13,
+              color: theme.colors.textSecondary,
+              lineHeight: 1.5,
+            }}>
+              Requires IB Gateway running locally via Docker:<br />
+              <code style={{ color: theme.colors.accentGold, fontSize: 12 }}>
+                docker compose up -d ib-gateway
+              </code>
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: theme.spacing.sm }}>
+            <div style={{ flex: 1 }}>
+              <label style={labelStyle}>Host</label>
+              <input type="text" value={ibHost} onChange={(e) => setIbHost(e.target.value)}
+                style={inputStyle} placeholder="127.0.0.1" />
+            </div>
+            <div style={{ width: 120 }}>
+              <label style={labelStyle}>Port</label>
+              <input type="text" value={ibPort} onChange={(e) => setIbPort(e.target.value)}
+                style={inputStyle} placeholder="4002" />
+            </div>
+          </div>
+
+          <div style={{ fontSize: 11, color: theme.colors.textMuted }}>
+            Port 4001 = Live trading · Port 4002 = Paper trading
+          </div>
+
+          {ibMessage && (
+            <div style={{
+              fontSize: 13,
+              color: ibConnected ? theme.colors.accentGold : theme.colors.loss,
+            }}>
+              {ibMessage}
+            </div>
+          )}
+
+          <div style={{ display: "flex", gap: theme.spacing.sm, marginTop: theme.spacing.sm }}>
+            {!ibConnected ? (
+              <button
+                style={{ ...buttonPrimary, opacity: ibLoading ? 0.6 : 1 }}
+                onClick={handleIbConnect} disabled={ibLoading}>
+                {ibLoading ? "Connecting..." : "Connect"}
+              </button>
+            ) : (
+              <button style={buttonSecondary} onClick={handleIbDisconnect}>
+                Disconnect
+              </button>
+            )}
+          </div>
         </div>
       </div>
 

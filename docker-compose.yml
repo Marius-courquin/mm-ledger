@@ -1,0 +1,17 @@
+services:
+  ib-gateway:
+    image: ghcr.io/gnzsnz/ib-gateway:latest
+    restart: unless-stopped
+    network_mode: host
+    environment:
+      TWS_USERID: ${IBKR_USERNAME:-}
+      TWS_PASSWORD: ${IBKR_PASSWORD:-}
+      TRADING_MODE: ${IBKR_TRADING_MODE:-live}
+      TWS_ACCEPT_INCOMING: "yes"
+      READ_ONLY_API: "yes"
+      VNC_SERVER_PASSWORD: "mm-ledger"
+      TWOFA_TIMEOUT_ACTION: "restart"
+    volumes:
+      - ib-gateway-data:/opt/ibc/config
+volumes:
+  ib-gateway-data:
