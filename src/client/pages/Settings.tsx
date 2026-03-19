@@ -61,6 +61,8 @@ const Settings: React.FC = () => {
   const [phoneNumber, setPhoneNumber] = useState("");
   const [pin, setPin] = useState("");
   const [devicePin, setDevicePin] = useState("");
+  const [sessionCookie, setSessionCookie] = useState("");
+  const [showImport, setShowImport] = useState(false);
   const [connected, setConnected] = useState(false);
   const [waitingForPin, setWaitingForPin] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -227,6 +229,33 @@ const Settings: React.FC = () => {
       setBpMessage(data.connected ? "Connecté !" : "Échec de connexion");
     } catch {
       setBpMessage("Erreur de validation");
+    }
+  };
+
+  const handleImportSession = async () => {
+    if (!sessionCookie.trim()) return;
+    setLoading(true);
+    setMessage("Importing session...");
+    // Parse cookie string to extract tr_session and tr_refresh
+    const cookies = sessionCookie.split(";").reduce<Record<string, string>>((acc, c) => {
+      const [k, ...v] = c.trim().split("=");
+      if (k) acc[k.trim()] = v.join("=").trim();
+      return acc;
+    }, {});
+    const sessionToken = cookies["tr_session"] || sessionCookie.trim();
+    const refreshToken = cookies["tr_refresh"] || "";
+    try {
+      await fetch("/api/auth/import-session", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionToken, refreshToken }),
+      });
+      setMessage("Session imported. Connecting...");
+      setShowImport(false);
+      setSessionCookie("");
+    } catch {
+      setMessage("Error importing session");
+      setLoading(false);
     }
   };
 
@@ -441,6 +470,47 @@ const Settings: React.FC = () => {
                 disabled={loading}
               >
                 {loading ? "Connecting..." : "Save & Connect"}
+              </button>
+              <button style={buttonSecondary} onClick={() => setShowImport(!showImport)}>
+                {showImport ? "Cancel" : "Import Session"}
+              </button>
+            </div>
+          )}
+
+          {/* Import session from browser */}
+          {showImport && (
+            <div style={{
+              padding: theme.spacing.md,
+              background: `${theme.colors.accentLavender}10`,
+              border: `1px solid ${theme.colors.accentLavender}30`,
+              borderRadius: theme.radius.md,
+              marginTop: theme.spacing.sm,
+            }}>
+              <p style={{ fontSize: 12, color: theme.colors.textSecondary, marginBottom: theme.spacing.sm, lineHeight: 1.5 }}>
+                If login fails (403), import your session from the browser:<br />
+                1. Go to app.traderepublic.com and login<br />
+                2. F12 → Network → click any request to api.traderepublic.com<br />
+                3. Copy the full <code style={{ color: theme.colors.accentGold }}>cookie</code> header value and paste below
+              </p>
+              <textarea
+                value={sessionCookie}
+                onChange={(e) => setSessionCookie(e.target.value)}
+                placeholder="Paste the cookie header here..."
+                style={{
+                  ...inputStyle,
+                  minHeight: 60,
+                  resize: "vertical",
+                  fontFamily: "monospace",
+                  fontSize: 11,
+                  borderColor: `${theme.colors.accentLavender}50`,
+                }}
+              />
+              <button
+                style={{ ...buttonPrimary, marginTop: theme.spacing.sm }}
+                onClick={handleImportSession}
+                disabled={loading}
+              >
+                Import & Connect
               </button>
             </div>
           )}

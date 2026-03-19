@@ -1,6 +1,9 @@
 import { TradeRepublicApi, createMessage } from "trapi";
 import { IBApi, EventName, Contract } from "@stoqey/ib";
+import { chromium } from "playwright-core";
 import { join } from "path";
+import { writeFileSync } from "fs";
+import { homedir } from "os";
 import { spawn, type Subprocess } from "bun";
 
 // --- Helpers ---
@@ -44,6 +47,174 @@ const PRODUCT_LABELS: Record<string, string> = {
   TAX_WRAPPER: "PEA",
 };
 
+// Browser-based login to bypass AWS WAF
+const BRAVE_PATH = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser";
+let trBrowserPage: any = null;
+let trBrowserContext: any = null;
+let trBrowser: any = null;
+
+async function loginViaBrowser(phoneNumber: string, pin: string): Promise<{ processId?: string } | null> {
+  console.log("TR: attempting browser-based login (WAF bypass)...");
+  let browser;
+  try {
+    // Close previous browser if any
+    if (trBrowser) { try { await trBrowser.close(); } catch {} }
+
+    browser = await chromium.launch({
+      headless: false,
+      executablePath: BRAVE_PATH,
+      args: ["--window-size=400,300", "--window-position=9999,9999"],
+    });
+    trBrowser = browser;
+    const ctx = await browser.newContext();
+    trBrowserContext = ctx;
+    const page = await ctx.newPage();
+    trBrowserPage = page;
+
+    // Navigate to TR app — this loads the AWS WAF JS and sets the waf-token cookie
+    console.log("TR browser: loading app.traderepublic.com...");
+    await page.goto("https://app.traderepublic.com/login");
+    // Wait for WAF challenge to complete and page to fully load
+    await page.waitForLoadState("networkidle");
+    await page.waitForTimeout(5000);
+
+    // Check if WAF token cookie exists
+    const cookies = await ctx.cookies("https://api.traderepublic.com");
+    const wafCookie = cookies.find(c => c.name === "aws-waf-token");
+    console.log("TR browser: WAF token present:", !!wafCookie);
+
+    // Intercept the login request to add proper headers (the app.tr site does this)
+    const result = await page.evaluate(async ({ phone, pin }: { phone: string; pin: string }) => {
+      // Get the aws-waf-token from cookies
+      const wafMatch = document.cookie.match(/aws-waf-token=([^;]+)/);
+      const wafToken = wafMatch?.[1] || "";
+
+      const r = await fetch("https://api.traderepublic.com/api/v1/auth/web/login", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-aws-waf-token": wafToken,
+        },
+        body: JSON.stringify({ phoneNumber: phone, pin }),
+        credentials: "include",
+      });
+      return { status: r.status, body: await r.text() };
+    }, { phone: phoneNumber, pin });
+
+    console.log("TR browser login status:", result.status);
+
+    if (result.status === 200) {
+      const data = JSON.parse(result.body);
+      console.log("TR browser login success, processId:", data.processId);
+      return data;
+    }
+
+    console.log("TR browser login response:", result.body.slice(0, 200));
+    return null;
+  } catch (e) {
+    console.error("TR browser login failed:", e);
+    // Close browser on error
+    if (browser) { await browser.close().catch(() => {}); trBrowser = null; }
+    return null;
+  }
+  // Note: browser stays open for 2FA verification
+}
+
+// Verify 2FA via the same browser session
+async function verify2FAViaBrowser(processId: string, devicePin: string): Promise<boolean> {
+  console.log("TR: verifying 2FA via browser (same session)...");
+  try {
+    if (!trBrowserPage || !trBrowserContext) {
+      console.error("TR: no browser page available for 2FA");
+      return false;
+    }
+
+    const result = await trBrowserPage.evaluate(async ({ processId, pin }: { processId: string; pin: string }) => {
+      const wafMatch = document.cookie.match(/aws-waf-token=([^;]+)/);
+      const wafToken = wafMatch?.[1] || "";
+
+      const res = await fetch(`https://api.traderepublic.com/api/v1/auth/web/login/${processId}/${pin}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-aws-waf-token": wafToken,
+        },
+        credentials: "include",
+      });
+      return { status: res.status, body: await res.text() };
+    }, { processId, pin: devicePin });
+
+    console.log("TR 2FA verify status:", result.status);
+
+    if (result.status === 200) {
+      // Extract session cookies from the browser context
+      const cookies = await trBrowserContext.cookies("https://api.traderepublic.com");
+      const trSession = cookies.find((c: any) => c.name === "tr_session")?.value;
+      const trRefresh = cookies.find((c: any) => c.name === "tr_refresh")?.value;
+
+      if (trSession) {
+        const cookiePath = join(homedir(), ".tr_api_cookies.json");
+        writeFileSync(cookiePath, JSON.stringify({
+          trSessionToken: trSession,
+          trRefreshToken: trRefresh || "",
+          rawCookies: [
+            `tr_session=${trSession}; Path=/; Secure; HttpOnly`,
+            ...(trRefresh ? [`tr_refresh=${trRefresh}; Path=/; Secure; HttpOnly`] : []),
+          ],
+        }, null, 2));
+        console.log("TR session saved from browser cookies");
+      } else {
+        console.log("TR: no tr_session cookie found, but 2FA passed — session may be in response");
+      }
+
+      // Close browser — we're done
+      if (trBrowser) { await trBrowser.close().catch(() => {}); trBrowser = null; }
+      return true;
+    }
+
+    console.log("TR 2FA response:", result.body?.slice(0, 200));
+    if (trBrowser) { await trBrowser.close().catch(() => {}); trBrowser = null; }
+    return false;
+  } catch (e) {
+    console.error("TR 2FA browser verify failed:", e);
+    if (trBrowser) { await trBrowser.close().catch(() => {}); trBrowser = null; }
+    return false;
+  }
+}
+
+async function connectTRViaBrowser(): Promise<"connected" | "need_pin" | "failed"> {
+  try {
+    const loginResult = await loginViaBrowser(trPhoneNumber, trPin);
+    if (loginResult?.processId) {
+      // Need 2FA — wait for PIN from frontend
+      waitingForPin = true;
+      console.log("TR browser: 2FA required, waiting for PIN...");
+
+      const devicePin = await new Promise<string>((resolve) => {
+        pinResolver = resolve;
+      });
+
+      const verified = await verify2FAViaBrowser(loginResult.processId, devicePin);
+      waitingForPin = false;
+      pinResolver = null;
+
+      if (verified) {
+        // Now connect trapi using saved session
+        api = new TradeRepublicApi(trPhoneNumber, trPin);
+        const loggedIn = await api.login();
+        connected = loggedIn;
+        return loggedIn ? "connected" : "failed";
+      }
+    }
+    connected = false;
+    return "failed";
+  } catch (e) {
+    console.error("TR browser login failed:", e);
+    connected = false;
+    return "failed";
+  }
+}
+
 async function connectTR(): Promise<"connected" | "need_pin" | "failed" | "no_credentials"> {
   if (!trPhoneNumber || !trPin) {
     connected = false;
@@ -64,10 +235,21 @@ async function connectTR(): Promise<"connected" | "need_pin" | "failed" | "no_cr
     const loggedIn = await api.login(getDevicePin);
     waitingForPin = false;
     pinResolver = null;
-    connected = loggedIn;
-    return loggedIn ? "connected" : "failed";
-  } catch (e) {
-    console.error("TR connection failed:", e);
+
+    if (loggedIn) {
+      connected = true;
+      return "connected";
+    }
+
+    // Login failed — likely WAF 403. Try browser-based login.
+    console.log("TR: standard login failed, trying browser-based login (WAF bypass)...");
+    return await connectTRViaBrowser();
+  } catch (e: any) {
+    console.error("TR connection failed:", e?.message || e);
+    // Also try browser fallback on exception
+    try {
+      return await connectTRViaBrowser();
+    } catch {}
     waitingForPin = false;
     pinResolver = null;
     connected = false;
@@ -376,6 +558,37 @@ Bun.serve({
       return json({ success: true, message: "Credentials saved. Connecting..." });
     }
 
+    // --- Import session from browser cookie ---
+    if (path === "/api/auth/import-session" && req.method === "POST") {
+      const body = await req.json();
+      const { sessionToken, refreshToken } = body;
+      if (!sessionToken) {
+        return error("sessionToken is required", 400);
+      }
+      // Write session file for trapi
+      const cookiePath = join(
+        (await import("os")).homedir(),
+        ".tr_api_cookies.json"
+      );
+      const sessionData = {
+        trSessionToken: sessionToken,
+        trRefreshToken: refreshToken || "",
+        rawCookies: [
+          `tr_session=${sessionToken}; Path=/; Secure; HttpOnly`,
+          ...(refreshToken ? [`tr_refresh=${refreshToken}; Path=/; Secure; HttpOnly`] : []),
+        ],
+      };
+      (await import("fs")).writeFileSync(cookiePath, JSON.stringify(sessionData, null, 2));
+
+      // Now connect using the saved session
+      trPhoneNumber = trPhoneNumber || "imported";
+      trPin = trPin || "imported";
+      connectTR().then((status) => {
+        console.log("TR import-session result:", status);
+      });
+      return json({ success: true, message: "Session imported. Connecting..." });
+    }
+
     // --- 2FA PIN submission ---
     if (path === "/api/auth/pin" && req.method === "POST") {
       if (!waitingForPin || !pinResolver) {
@@ -672,6 +885,8 @@ Bun.serve({
       if (!ibConnected) return error("IBKR not connected", 503);
       return json({ positions: ibPositions });
     }
+
+    // IBKR history not available — requires market data subscription
 
     return error("Not found", 404);
   },

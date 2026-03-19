@@ -109,21 +109,16 @@ const Dashboard: React.FC = () => {
   useEffect(() => {
     async function load() {
       try {
+        // Load TR data (non-blocking — dashboard works even if TR is not connected)
         const [cashRes, accountsRes, portfolioRes] = await Promise.all([
-          fetch("/api/cash"),
-          fetch("/api/accounts"),
-          fetch("/api/portfolio"),
+          fetch("/api/cash").catch(() => null),
+          fetch("/api/accounts").catch(() => null),
+          fetch("/api/portfolio").catch(() => null),
         ]);
 
-        if (!cashRes.ok || !accountsRes.ok || !portfolioRes.ok) {
-          setError("Backend not connected. Start the server and configure Trade Republic in Settings.");
-          setLoading(false);
-          return;
-        }
-
-        setCash(await cashRes.json());
-        setAccounts((await accountsRes.json()).accounts);
-        setPortfolios(await portfolioRes.json());
+        if (cashRes?.ok) setCash(await cashRes.json());
+        if (accountsRes?.ok) setAccounts((await accountsRes.json()).accounts);
+        if (portfolioRes?.ok) setPortfolios(await portfolioRes.json());
 
         // Load BP accounts (non-blocking)
         fetch("/api/bp/accounts")
@@ -138,11 +133,12 @@ const Dashboard: React.FC = () => {
         ]).then(([accData, posData]) => {
           if (accData?.accounts) setIbkrAccounts(accData.accounts);
           if (posData?.positions) setIbkrPositions(posData.positions);
+          // No IBKR history chart — requires market data subscription
         }).catch(() => {});
 
-        // Load live prices
-        const pricesRes = await fetch("/api/prices");
-        if (pricesRes.ok) {
+        // Load live prices (non-blocking)
+        const pricesRes = await fetch("/api/prices").catch(() => null);
+        if (pricesRes?.ok) {
           const pricesData = await pricesRes.json();
           const priceMap: Record<string, number> = {};
           for (const p of pricesData) {
@@ -153,9 +149,9 @@ const Dashboard: React.FC = () => {
           setPrices(priceMap);
         }
 
-        // Load history for per-section charts
-        const histRes = await fetch("/api/history?range=max");
-        if (histRes.ok) {
+        // Load history for per-section charts (non-blocking)
+        const histRes = await fetch("/api/history?range=max").catch(() => null);
+        if (histRes?.ok) {
           const histData: HistoryEntry[] = await histRes.json();
           // Group by section and aggregate values over time
           const SECTION_MAP: Record<string, string> = {
@@ -212,6 +208,7 @@ const Dashboard: React.FC = () => {
 
   const ibkrTotalCash = ibkrAccounts.reduce((sum, a) => sum + (a.totalCash || 0), 0);
   const ibkrTotalValue = ibkrAccounts.reduce((sum, a) => sum + (a.netLiquidation || 0), 0);
+  // TR cash + BP balances + IBKR cash (IBKR positions added separately via ibkrPositionsValue)
   const totalCash = cash.reduce((sum, c) => sum + c.amount, 0) + bpAccounts.reduce((sum, a) => sum + a.balance, 0) + ibkrTotalCash;
   // Helper to get current value of a position
   const posValue = (pos: Position) => {
@@ -336,13 +333,7 @@ const Dashboard: React.FC = () => {
     );
   }
 
-  if (error) {
-    return (
-      <div style={{ padding: 48 }}>
-        <div style={{ ...card, color: theme.colors.loss, fontSize: 14 }}>{error}</div>
-      </div>
-    );
-  }
+  // No more blocking error — dashboard shows whatever data is available
 
   return (
     <div style={{ maxWidth: 1200 }}>
@@ -422,7 +413,7 @@ const Dashboard: React.FC = () => {
 
       {/* Total portfolio chart */}
       {(() => {
-        // Merge all section charts into one total
+        // Merge all section charts (TR + IBKR) into one total
         const totalMap = new Map<string, number>();
         for (const points of Object.values(sectionCharts)) {
           for (const pt of points) {
@@ -434,12 +425,19 @@ const Dashboard: React.FC = () => {
 
         if (totalPoints.length === 0) return null;
 
-        const totalPnl = totalBalance - totalCash;
-        const totalInvested = portfolios.reduce((sum, p) =>
+        // TR: invested vs current value
+        const trInvested = portfolios.reduce((sum, p) =>
           sum + (p.categories || []).reduce((cs, cat) =>
             cs + cat.positions.reduce((ps, pos) =>
               ps + (parseFloat(pos.netSize) || 0) * (parseFloat(pos.averageBuyIn) || 0), 0), 0), 0);
-        const totalPnlPct = totalInvested > 0 ? ((totalPnl - totalInvested) / totalInvested) * 100 : 0;
+        // IBKR: use unrealizedPnL directly (already in EUR, accounts for FX)
+        const ibkrUnrealizedPnL = ibkrAccounts.reduce((sum, a) => sum + (a.unrealizedPnL || 0), 0);
+        // Total current value of all positions
+        const totalCurrentValue = totalPositions + ibkrPositionsValue;
+        // Total P&L = TR P&L + IBKR P&L
+        const trPnl = totalPositions - trInvested;
+        const totalPnl = trPnl + ibkrUnrealizedPnL;
+        const totalPnlPct = totalCurrentValue > 0 ? (totalPnl / (totalCurrentValue - totalPnl)) * 100 : 0;
 
         return (
           <div style={{ ...card, marginBottom: theme.spacing.xl }}>
@@ -449,7 +447,7 @@ const Dashboard: React.FC = () => {
               </h2>
               <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.sm }}>
                 <span className="tabular-nums" style={{ fontSize: 18, fontWeight: 700, color: theme.colors.accentGold }}>
-                  €{fmt(totalBalance - totalCash)}
+                  €{fmt(totalCurrentValue)}
                 </span>
                 <span className="tabular-nums" style={{ fontSize: 13, fontWeight: 600, color: totalPnlPct >= 0 ? theme.colors.gain : theme.colors.loss }}>
                   {totalPnlPct >= 0 ? "+" : ""}{totalPnlPct.toFixed(1)}%
@@ -525,7 +523,7 @@ const Dashboard: React.FC = () => {
                 </div>
                 <div>
                   <div style={{ fontSize: 14, fontWeight: 600 }}>Trade Republic</div>
-                  <div style={{ fontSize: 12, color: theme.colors.textMuted }}>{c.label}</div>
+                  <div style={{ fontSize: 12, color: theme.colors.textMuted }}>{c.label} · Cash</div>
                 </div>
               </div>
               <div style={{ textAlign: "right" }}>
@@ -583,6 +581,37 @@ const Dashboard: React.FC = () => {
               </div>
             </div>
           ))}
+          {ibkrAccounts.map((a, i) => (
+            <div
+              key={`ibkr-${i}`}
+              style={{
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                padding: theme.spacing.md, background: theme.colors.surfaceElevated,
+                borderRadius: theme.radius.md, border: `1px solid ${theme.colors.border}`,
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: theme.spacing.sm }}>
+                <div style={{
+                  width: 36, height: 36, borderRadius: theme.radius.sm,
+                  background: "linear-gradient(135deg, #dc143c, #8b0000)",
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 10, fontWeight: 700, color: "#fff",
+                }}>IBKR</div>
+                <div>
+                  <div style={{ fontSize: 14, fontWeight: 600 }}>Interactive Brokers</div>
+                  <div style={{ fontSize: 12, color: theme.colors.textMuted }}>Cash available</div>
+                </div>
+              </div>
+              <div style={{ textAlign: "right" }}>
+                <div className="tabular-nums" style={{ fontSize: 14, fontWeight: 600 }}>
+                  €{fmt(a.totalCash)}
+                </div>
+                <div style={{ fontSize: 12, color: theme.colors.textMuted }}>
+                  {a.currency}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
 
@@ -627,9 +656,14 @@ const Dashboard: React.FC = () => {
                 userSelect: "none",
               }}
             >
-              <span style={{ fontSize: 18 }}>{sectionIcons[sectionName] ?? "📊"}</span>
+              <div style={{
+                width: 24, height: 24, borderRadius: theme.radius.sm,
+                background: `linear-gradient(135deg, ${theme.colors.accentLilac}, ${theme.colors.accentLavender})`,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 9, fontWeight: 700, color: "#fff",
+              }}>TR</div>
               <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.colors.textPrimary, flex: 1 }}>
-                {sectionName}
+                {sectionName} (Trade Republic)
               </h2>
               <span className="tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: theme.colors.accentGold, marginRight: theme.spacing.xs }}>
                 €{fmt(sectionValue)}
@@ -752,9 +786,14 @@ const Dashboard: React.FC = () => {
               marginBottom: theme.spacing.md, cursor: "pointer", userSelect: "none",
             }}
           >
-            <span style={{ fontSize: 18 }}>🏛️</span>
+            <div style={{
+              width: 24, height: 24, borderRadius: theme.radius.sm,
+              background: "linear-gradient(135deg, #dc143c, #8b0000)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 7, fontWeight: 700, color: "#fff",
+            }}>IBKR</div>
             <h2 style={{ fontSize: 16, fontWeight: 600, color: theme.colors.textPrimary, flex: 1 }}>
-              Interactive Brokers
+              CTO (Interactive Brokers)
             </h2>
             <span className="tabular-nums" style={{ fontSize: 16, fontWeight: 700, color: theme.colors.accentGold, marginRight: theme.spacing.xs }}>
               €{fmt(ibkrTotalValue)}
