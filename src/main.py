@@ -25,6 +25,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.manager.register_worker_class("woob_bank", WoobWorker)
         from src.connectors.ibkr import IBKRWorker
         deps.manager.register_worker_class("ibkr", IBKRWorker)
+        from src.connectors.trade_republic import TradeRepublicWorker
+        deps.manager.register_worker_class("trade_republic", TradeRepublicWorker)
         yield
         from src.scheduler import scheduler
         scheduler.shutdown(wait=False)
