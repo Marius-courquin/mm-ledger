@@ -10,12 +10,16 @@ const ACCOUNT_LABELS: Record<string, string> = {
   DEFAULT: 'Compte-Titres Ordinaire',
   TAX_WRAPPER: 'Plan Epargne Actions',
   PEA: 'Plan Epargne Actions',
+  CRYPTOS: 'Actifs numériques',
+  PRIVATEMARKETS: 'Investissements privés',
 };
 
 const ACCOUNT_SHORT: Record<string, string> = {
   DEFAULT: 'CTO',
   TAX_WRAPPER: 'PEA',
   PEA: 'PEA',
+  CRYPTOS: 'Crypto',
+  PRIVATEMARKETS: 'Private Equity',
 };
 
 const CATEGORY_LABELS: Record<string, string> = {
@@ -29,19 +33,24 @@ const ACCOUNT_ICONS: Record<string, typeof Wallet> = {
   DEFAULT: TrendingUp,
   TAX_WRAPPER: Landmark,
   PEA: Landmark,
-  CRYPTO: Bitcoin,
+  CRYPTOS: Bitcoin,
+  PRIVATEMARKETS: Briefcase,
 };
 
 const ACCOUNT_COLORS: Record<string, string> = {
   DEFAULT: 'from-blue-500/10 to-transparent border-blue-500/20',
   TAX_WRAPPER: 'from-emerald-500/10 to-transparent border-emerald-500/20',
   PEA: 'from-emerald-500/10 to-transparent border-emerald-500/20',
+  CRYPTOS: 'from-orange-500/10 to-transparent border-orange-500/20',
+  PRIVATEMARKETS: 'from-purple-500/10 to-transparent border-purple-500/20',
 };
 
 const ACCOUNT_ICON_COLORS: Record<string, string> = {
   DEFAULT: 'text-blue-400',
   TAX_WRAPPER: 'text-emerald-400',
   PEA: 'text-emerald-400',
+  CRYPTOS: 'text-orange-400',
+  PRIVATEMARKETS: 'text-purple-400',
 };
 
 // ── Position row ─────────────────────────────────────────────────────────────
