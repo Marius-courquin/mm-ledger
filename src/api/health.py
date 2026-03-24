@@ -3,7 +3,7 @@ import time
 from fastapi import APIRouter
 
 from src.api import deps
-from src.scheduler import get_job_status, scheduler
+from src.scheduler import get_job_status, get_scheduler
 
 router = APIRouter(tags=["system"])
 
@@ -22,7 +22,7 @@ def health():
     return {
         "status": "ok" if db_ok == "ok" else "degraded",
         "vault": deps.vault.status if deps.vault else "uninitialized",
-        "scheduler": "running" if scheduler.running else "stopped",
+        "scheduler": "running" if (s := get_scheduler()) and s.running else "stopped",
         "workers": workers,
         "db": db_ok,
         "uptime_seconds": int(time.time() - _start_time),

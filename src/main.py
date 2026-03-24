@@ -19,7 +19,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.vault = Vault(data / "vault.db")
         deps.db_engine = create_engine_and_tables(data / "ledger.db")
         deps.manager = ConnectorManager()
-        from src.scheduler import setup_scheduler
+        from src.scheduler import setup_scheduler, shutdown_scheduler
         setup_scheduler()
         from src.connectors.woob_bank import WoobWorker
         deps.manager.register_worker_class("woob_bank", WoobWorker)
@@ -28,8 +28,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         from src.connectors.trade_republic import TradeRepublicWorker
         deps.manager.register_worker_class("trade_republic", TradeRepublicWorker)
         yield
-        from src.scheduler import scheduler
-        scheduler.shutdown(wait=False)
+        shutdown_scheduler()
         deps.manager.stop_all()
         deps.vault.lock()
         if deps.db_engine:

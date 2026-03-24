@@ -4,14 +4,19 @@ from sqlalchemy import insert
 from src.api import deps
 from src.db.models import balance_snapshots
 
-scheduler = AsyncIOScheduler()
-
+_scheduler: AsyncIOScheduler | None = None
 _last_results: dict[str, str] = {}
 
 
+def get_scheduler() -> AsyncIOScheduler | None:
+    return _scheduler
+
+
 def get_job_status():
+    if not _scheduler:
+        return []
     jobs = []
-    for job in scheduler.get_jobs():
+    for job in _scheduler.get_jobs():
         jobs.append({
             "id": job.id,
             "schedule": str(job.trigger),
@@ -57,5 +62,14 @@ async def daily_snapshot():
 
 
 def setup_scheduler():
-    scheduler.add_job(daily_snapshot, "cron", hour=23, minute=0, id="daily_snapshot")
-    scheduler.start()
+    global _scheduler
+    _scheduler = AsyncIOScheduler()
+    _scheduler.add_job(daily_snapshot, "cron", hour=23, minute=0, id="daily_snapshot")
+    _scheduler.start()
+
+
+def shutdown_scheduler():
+    global _scheduler
+    if _scheduler and _scheduler.running:
+        _scheduler.shutdown(wait=False)
+    _scheduler = None

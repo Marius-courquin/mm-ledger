@@ -2,7 +2,6 @@ import hashlib
 import base64
 import json
 
-import requests
 from src.connectors.base import ConnectorWorker
 
 
@@ -58,6 +57,7 @@ class TradeRepublicWorker(ConnectorWorker):
             driver.quit()
 
     def _login(self, waf_token: str) -> str | None:
+        import requests
         device_id = base64.b64encode(
             hashlib.sha512(f"mm-ledger-{self._phone}".encode()).digest()
         ).decode()
@@ -82,6 +82,7 @@ class TradeRepublicWorker(ConnectorWorker):
         self._session_token = None
 
     def submit_2fa(self, code: str):
+        import requests
         try:
             resp = requests.post(
                 f"https://api.traderepublic.com/api/v1/auth/web/login/{self._pending_process_id}/{code}",
