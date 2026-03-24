@@ -19,6 +19,8 @@ class TradeRepublicWorker(ConnectorWorker):
         self._phone = None
         self._pin = None
         self._pending_process_id = None
+        self._waf_token = None
+        self._waf_cookies = {}
 
     def connect(self, credentials: dict):
         self._phone = credentials["phone"]
@@ -27,8 +29,8 @@ class TradeRepublicWorker(ConnectorWorker):
 
         try:
             log.info("Starting login via browser (WAF bypass)...")
-            waf_token, cookies = self._browser_login()
-            result = self._api_login(waf_token, cookies)
+            self._waf_token, self._waf_cookies = self._browser_login()
+            result = self._api_login(self._waf_token, self._waf_cookies)
 
             if result.get("processId"):
                 self._pending_process_id = result["processId"]
@@ -146,17 +148,33 @@ class TradeRepublicWorker(ConnectorWorker):
     def submit_2fa(self, code: str):
         import requests
         try:
-            resp = requests.post(
-                f"https://api.traderepublic.com/api/v1/auth/web/login/{self._pending_process_id}/{code}",
-                timeout=15,
-            )
+            session = requests.Session()
+            for name, value in self._waf_cookies.items():
+                session.cookies.set(name, value, domain=".traderepublic.com")
+
+            headers = {
+                "Content-Type": "application/json",
+                "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36",
+            }
+            if self._waf_token:
+                headers["x-aws-waf-token"] = self._waf_token
+
+            url = f"https://api.traderepublic.com/api/v1/auth/web/login/{self._pending_process_id}/{code}"
+            log.info(f"Submitting 2FA code to {url}")
+            resp = session.post(url, headers=headers, timeout=15)
+            log.info(f"2FA response: {resp.status_code}, body: {resp.text[:200]}")
+
+            if resp.status_code != 200:
+                self.event_queue.put({"type": "error", "message": f"2FA HTTP {resp.status_code}"})
+                return
+
             data = resp.json()
             if "sessionToken" in data:
                 self._session_token = data["sessionToken"]
                 log.info("2FA success, connected")
                 self.event_queue.put({"type": "status", "state": "connected"})
             else:
-                log.error(f"2FA failed: {data}")
+                log.error(f"2FA unexpected response: {data}")
                 self.event_queue.put({"type": "error", "message": f"2FA failed: {data}"})
         except Exception as e:
             log.error(f"2FA error: {e}")
