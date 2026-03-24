@@ -6,6 +6,8 @@ from src.api.portfolio import router as portfolio_router
 from src.api.snapshots import router as snapshots_router
 from src.api.transactions import router as transactions_router
 from src.api.performance import router as performance_router
+from src.api.events import router as events_router
+from src.api.health import router as health_router
 
 api_router = APIRouter()
 api_router.include_router(vault_router)
@@ -15,3 +17,5 @@ api_router.include_router(portfolio_router)
 api_router.include_router(snapshots_router)
 api_router.include_router(transactions_router)
 api_router.include_router(performance_router)
+api_router.include_router(events_router)
+api_router.include_router(health_router)
