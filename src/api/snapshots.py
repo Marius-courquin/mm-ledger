@@ -1,3 +1,4 @@
+import time
 from datetime import date, timedelta
 
 from fastapi import APIRouter, Query, Response
@@ -41,3 +42,30 @@ def list_snapshots(
         }
         for r in rows
     ]
+
+
+@router.post("/trigger", status_code=202)
+def trigger_snapshot():
+    """Trigger a manual fetch on all connected workers."""
+    health = deps.manager.health_check()
+    triggered = []
+    skipped = {}
+    for cid, state in health.items():
+        if state == "connected":
+            deps.manager.send_command(cid, {"type": "fetch_balances"})
+            deps.manager.send_command(cid, {"type": "fetch_positions"})
+            triggered.append(cid)
+        else:
+            skipped[cid] = state
+    return {"triggered": triggered, "skipped": list(skipped.keys()), "reason_skipped": skipped}
+
+
+@router.post("/trigger/{connector_id}", status_code=202)
+def trigger_snapshot_one(connector_id: str):
+    status = deps.manager.get_status(connector_id)
+    if status["state"] != "connected":
+        from fastapi import HTTPException
+        raise HTTPException(409, f"Worker not connected (state: {status['state']})")
+    deps.manager.send_command(connector_id, {"type": "fetch_balances"})
+    deps.manager.send_command(connector_id, {"type": "fetch_positions"})
+    return {"triggered": connector_id}

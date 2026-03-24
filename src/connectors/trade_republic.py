@@ -165,6 +165,8 @@ class TradeRepublicWorker(ConnectorWorker):
                 self._session_token = session_token
                 log.info("2FA success — session token obtained")
                 self.event_queue.put({"type": "status", "state": "connected"})
+                # Auto-fetch data after successful connection
+                self._auto_fetch()
             else:
                 log.error(f"No tr_session in cookies. Headers: {dict(resp.headers)}")
                 self.event_queue.put({"type": "error", "message": "2FA OK but no session token in cookies"})
@@ -172,50 +174,110 @@ class TradeRepublicWorker(ConnectorWorker):
             log.error(f"2FA error: {e}")
             self.event_queue.put({"type": "error", "message": str(e)})
 
+    def _auto_fetch(self):
+        """Fetch cash + positions immediately after connection."""
+        try:
+            log.info("Auto-fetching data...")
+            import websockets.sync.client as ws_client
+            with ws_client.connect("wss://api.traderepublic.com") as ws:
+                self._ws_connect(ws)
+
+                cash = self._ws_sub(ws, {"type": "availableCash", "token": self._session_token})
+                log.info(f"Cash: {cash}")
+                if cash:
+                    self.event_queue.put({"type": "balances", "data": cash})
+
+                positions = self._ws_sub(ws, {"type": "compactPortfolioByType", "token": self._session_token})
+                log.info(f"Positions: {json.dumps(positions)[:200]}")
+                if positions:
+                    self.event_queue.put({"type": "positions", "data": positions})
+
+                accounts = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
+                log.info(f"Accounts: {json.dumps(accounts)[:200]}")
+                if accounts:
+                    self.event_queue.put({"type": "accounts", "data": accounts})
+
+        except Exception as e:
+            log.error(f"Auto-fetch error: {e}")
+
     def fetch_accounts(self) -> list[dict]:
-        return self._ws_request("accountPairs")
+        return self._ws_one_shot("accountPairs")
 
     def fetch_positions(self) -> list[dict]:
-        return self._ws_request("compactPortfolioByType")
+        return self._ws_one_shot("compactPortfolioByType")
 
     def fetch_balances(self) -> list[dict]:
-        return self._ws_request("availableCash")
+        return self._ws_one_shot("availableCash")
 
     def fetch_transactions(self) -> list[dict]:
-        return self._ws_request("timelineTransactions")
-
-    def _ws_request(self, sub_type: str, extra: dict | None = None) -> list[dict]:
-        """Send a subscription over the TR WebSocket protocol."""
+        """Fetch all transactions with pagination (like the scraper)."""
         import websockets.sync.client as ws_client
-
+        all_items = []
         with ws_client.connect("wss://api.traderepublic.com") as ws:
-            # Connect handshake
-            locale = {
-                "locale": "fr",
-                "platformId": "webtrading",
-                "platformVersion": "safari - 18.3.0",
-                "clientId": "app.traderepublic.com",
-                "clientVersion": "3.151.3",
-            }
-            ws.send(f"connect 31 {json.dumps(locale)}")
-            ws.recv()  # ack
+            self._ws_connect(ws)
+            after = None
+            while True:
+                payload = {"type": "timelineTransactions", "token": self._session_token}
+                if after:
+                    payload["after"] = after
+                data = self._ws_sub(ws, payload)
+                if not data or not data.get("items"):
+                    break
+                all_items.extend(data["items"])
+                after = data.get("cursors", {}).get("after")
+                if not after:
+                    break
+                log.info(f"Fetched {len(all_items)} transactions so far...")
+        return all_items
 
-            # Subscribe
-            payload = {"type": sub_type, "token": self._session_token}
-            if extra:
-                payload.update(extra)
-            ws.send(f"sub 1 {json.dumps(payload)}")
-            raw = ws.recv()
+    # --- WebSocket helpers (exact protocol from trade_republic_scraper) ---
 
-            # Unsub
-            ws.send("unsub 1")
+    _ws_msg_id = 0
 
-            # Parse: response is like "1 A {json...}"
-            # Find first { and parse from there
-            idx = raw.find("{")
-            if idx == -1:
-                idx = raw.find("[")
-            if idx >= 0:
-                return json.loads(raw[idx:])
-            log.warning(f"WS response not JSON: {raw[:100]}")
-            return []
+    def _ws_connect(self, ws):
+        """Send the connect handshake."""
+        locale = {
+            "locale": "fr",
+            "platformId": "webtrading",
+            "platformVersion": "safari - 18.3.0",
+            "clientId": "app.traderepublic.com",
+            "clientVersion": "3.151.3",
+        }
+        ws.send(f"connect 31 {json.dumps(locale)}")
+        ws.recv()  # ack
+
+    def _ws_sub(self, ws, payload: dict):
+        """Subscribe, receive one response, unsubscribe. Returns parsed data."""
+        self._ws_msg_id += 1
+        mid = self._ws_msg_id
+        ws.send(f"sub {mid} {json.dumps(payload)}")
+        raw = ws.recv()
+        ws.send(f"unsub {mid}")
+        try:
+            ws.recv()  # unsub ack
+        except Exception:
+            pass
+        return self._parse_ws_response(raw)
+
+    def _parse_ws_response(self, raw: str):
+        """Parse WS response: find JSON object or array in the raw string."""
+        # Try object first
+        start = raw.find("{")
+        end = raw.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(raw[start:end + 1])
+        # Try array
+        start = raw.find("[")
+        end = raw.rfind("]")
+        if start != -1 and end != -1 and end > start:
+            return json.loads(raw[start:end + 1])
+        log.warning(f"WS response not JSON: {raw[:100]}")
+        return None
+
+    def _ws_one_shot(self, sub_type: str) -> list[dict]:
+        """Open WS, connect, subscribe once, close."""
+        import websockets.sync.client as ws_client
+        with ws_client.connect("wss://api.traderepublic.com") as ws:
+            self._ws_connect(ws)
+            data = self._ws_sub(ws, {"type": sub_type, "token": self._session_token})
+            return data if data else []
