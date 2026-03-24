@@ -158,8 +158,8 @@ function CategorySection({ category, currency, accountValue }: {
         <table className="w-full">
           <thead>
             <tr className="bg-white/[0.01]">
-              {['Name', 'Qty', 'Avg Price', 'Price', 'Value', 'Weight', 'P&L', 'P&L %'].map((h) => (
-                <th key={h} className={`px-${h === 'Name' ? '5' : '3'} py-1.5 text-[10px] font-medium uppercase tracking-wider text-mm-text-muted ${h === 'Name' ? 'text-left' : 'text-right'}`}>
+              {['Nom', 'Qté', 'PRU', 'Cours', 'Valeur', 'Poids', '+/- val.', '+/- %'].map((h) => (
+                <th key={h} className={`px-${h === 'Nom' ? '5' : '3'} py-1.5 text-[10px] font-medium uppercase tracking-wider text-mm-text-muted ${h === 'Nom' ? 'text-left' : 'text-right'}`}>
                   {h}
                 </th>
               ))}
@@ -216,7 +216,7 @@ function AccountCard({ account, currency }: { account: PortfolioAccount; currenc
             <div className="flex items-center gap-3 text-[12px]">
               {account.cash > 0 && (
                 <span className="text-mm-text-muted">
-                  Cash <span className="text-mm-text-secondary tabular-nums">{formatCurrency(account.cash, currency)}</span>
+                  Espèces <span className="text-mm-text-secondary tabular-nums">{formatCurrency(account.cash, currency)}</span>
                 </span>
               )}
               {account.total_invested > 0 && (
@@ -264,7 +264,7 @@ export function Portfolio() {
         const data = await getPortfolio();
         if (!cancelled) setPortfolio(data);
       } catch (err: unknown) {
-        if (!cancelled) setError((err as { detail?: string }).detail ?? 'Failed to load portfolio');
+        if (!cancelled) setError((err as { detail?: string }).detail ?? 'Impossible de charger le portefeuille');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -303,7 +303,7 @@ export function Portfolio() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div>
-          <h1 className="text-2xl font-semibold text-mm-text">Portfolio</h1>
+          <h1 className="text-2xl font-semibold text-mm-text">Portefeuille</h1>
           <p className="text-[13px] text-mm-text-muted mt-0.5">
             {portfolio.accounts.length} compte{portfolio.accounts.length > 1 ? 's' : ''} &middot; {totalPositions} position{totalPositions > 1 ? 's' : ''}
           </p>
@@ -315,6 +315,7 @@ export function Portfolio() {
           <div className="flex items-center justify-end gap-3 mt-0.5">
             <span className="text-[12px] text-mm-text-muted">
               Investi <span className="text-mm-text-secondary tabular-nums">{formatCurrency(portfolio.total_invested, currency)}</span>
+
             </span>
             <span className={`text-[13px] font-medium tabular-nums ${portfolio.total_pnl >= 0 ? 'text-mm-gain' : 'text-red-400'}`}>
               {portfolio.total_pnl >= 0 ? '+' : ''}{formatCurrency(portfolio.total_pnl, currency)} ({portfolio.total_pnl_pct >= 0 ? '+' : ''}{portfolio.total_pnl_pct.toFixed(2)}%)
