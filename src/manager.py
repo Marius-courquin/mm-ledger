@@ -23,6 +23,8 @@ class ConnectorManager:
     def __init__(self):
         self._workers: dict[str, WorkerHandle] = {}
         self._worker_classes: dict[str, type] = {}
+        # Live data cache — populated from worker events
+        self.live_data: dict[str, dict] = {}  # connector_id -> {accounts, balances, positions}
 
     def register_worker_class(self, connector_type: str, cls: type):
         self._worker_classes[connector_type] = cls
@@ -39,6 +41,7 @@ class ConnectorManager:
         proc.start()
         handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
         self._workers[connector_id] = handle
+        self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": []}
         cmd_q.put({"type": "connect", "credentials": credentials})
 
     def stop(self, connector_id: str):
@@ -62,13 +65,22 @@ class ConnectorManager:
 
     def collect_events(self) -> list[dict]:
         events = []
-        for handle in self._workers.values():
+        for cid, handle in self._workers.items():
             while not handle.event_queue.empty():
                 try:
                     event = handle.event_queue.get_nowait()
-                    if event.get("type") == "status":
+                    event["connector_id"] = cid
+                    evt_type = event.get("type")
+
+                    if evt_type == "status":
                         handle.state = event.get("state", handle.state)
                         handle.detail = event.get("detail")
+                    elif evt_type in ("accounts", "balances", "positions"):
+                        # Cache live data
+                        if cid not in self.live_data:
+                            self.live_data[cid] = {"accounts": [], "balances": [], "positions": []}
+                        self.live_data[cid][evt_type] = event.get("data", [])
+
                     events.append(event)
                 except Exception:
                     break
@@ -89,3 +101,8 @@ class ConnectorManager:
     def health_check(self) -> dict[str, str]:
         self.collect_events()
         return {cid: h.state for cid, h in self._workers.items()}
+
+    def get_all_live_data(self) -> dict[str, dict]:
+        """Drain events and return all cached live data."""
+        self.collect_events()
+        return self.live_data
