@@ -175,7 +175,7 @@ class TradeRepublicWorker(ConnectorWorker):
             self.event_queue.put({"type": "error", "message": str(e)})
 
     def _auto_fetch(self):
-        """Fetch cash + positions immediately after connection."""
+        """Fetch cash + positions for all accounts, like the POC JS did."""
         try:
             log.info("Auto-fetching data — opening WS...")
             import websockets.sync.client as ws_client
@@ -183,20 +183,41 @@ class TradeRepublicWorker(ConnectorWorker):
                 log.info("WS connected, sending handshake...")
                 self._ws_connect(ws)
 
+                # 1. Get accounts list
+                accounts_data = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
+                log.info(f"Accounts: {json.dumps(accounts_data)[:300]}")
+                if accounts_data:
+                    self.event_queue.put({"type": "accounts", "data": accounts_data})
+
+                # 2. Get cash
                 cash = self._ws_sub(ws, {"type": "availableCash", "token": self._session_token})
                 log.info(f"Cash: {cash}")
                 if cash:
-                    self.event_queue.put({"type": "balances", "data": cash})
+                    # cash is a list like [{"accountNumber","currencyId","amount"}]
+                    self.event_queue.put({"type": "balances", "data": cash if isinstance(cash, list) else [cash]})
 
-                positions = self._ws_sub(ws, {"type": "compactPortfolioByType", "token": self._session_token})
-                log.info(f"Positions: {json.dumps(positions)[:200]}")
-                if positions:
-                    self.event_queue.put({"type": "positions", "data": positions})
+                # 3. Get positions per account (compactPortfolioByType needs secAccNo)
+                all_positions = {"categories": [], "products": []}
+                accs = accounts_data.get("accounts", []) if isinstance(accounts_data, dict) else []
+                for acc in accs:
+                    sec_acc_no = acc.get("securitiesAccountNumber")
+                    if not sec_acc_no:
+                        continue
+                    portfolio = self._ws_sub(ws, {
+                        "type": "compactPortfolioByType",
+                        "token": self._session_token,
+                        "secAccNo": sec_acc_no,
+                    })
+                    log.info(f"Portfolio {sec_acc_no}: {json.dumps(portfolio)[:300]}")
+                    if portfolio and isinstance(portfolio, dict):
+                        for cat in portfolio.get("categories", []):
+                            # Tag each position with the account
+                            for pos in cat.get("positions", []):
+                                pos["accountId"] = sec_acc_no
+                            all_positions["categories"].append(cat)
 
-                accounts = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
-                log.info(f"Accounts: {json.dumps(accounts)[:200]}")
-                if accounts:
-                    self.event_queue.put({"type": "accounts", "data": accounts})
+                self.event_queue.put({"type": "positions", "data": all_positions})
+                log.info(f"Auto-fetch done: {len(all_positions['categories'])} categories")
 
         except Exception as e:
             log.error(f"Auto-fetch error: {e}")
