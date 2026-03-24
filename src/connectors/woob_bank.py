@@ -1,7 +1,12 @@
+import logging
 import shutil
+import sys
 from pathlib import Path
 
 from src.connectors.base import ConnectorWorker
+
+logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message)s", stream=sys.stderr)
+log = logging.getLogger("woob_worker")
 
 
 class WoobWorker(ConnectorWorker):
@@ -13,43 +18,58 @@ class WoobWorker(ConnectorWorker):
     def _apply_patches(self):
         patches_dir = Path(__file__).parent.parent / "patches" / "woob_banquepopulaire"
         if not patches_dir.exists():
+            log.info("No patches to apply")
             return
         target = Path.home() / ".local/share/woob/modules/3.7/woob_modules/banquepopulaire"
         target.mkdir(parents=True, exist_ok=True)
         for f in patches_dir.glob("*.py"):
             shutil.copy2(f, target / f.name)
+            log.info(f"Patched {f.name}")
 
     def connect(self, credentials: dict):
-        from woob.core import Woob
-        from woob.exceptions import AppValidation, SentOTPQuestion
-
-        self._apply_patches()
-        self._woob = Woob()
-        module = credentials.get("bank_module", "banquepopulaire")
-        params = {
-            "login": credentials["login"],
-            "password": credentials["password"],
-            "request_information": "interactive",
-        }
-        if credentials.get("region"):
-            params["cdetab"] = credentials["region"]
-
-        self._woob.load_backend(module, "bank", params=params)
-        self._backend = self._woob["bank"]
-
+        self.event_queue.put({"type": "status", "state": "connecting"})
         try:
-            accs = list(self._backend.iter_accounts())
-            self.event_queue.put({"type": "status", "state": "connected"})
-            self.event_queue.put({
-                "type": "accounts", "data": [
-                    {"id": a.id, "name": a.label, "balance": float(a.balance),
-                     "currency": a.currency_text, "type": str(a.type)} for a in accs
-                ],
-            })
-        except SentOTPQuestion as e:
-            self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
-        except AppValidation as e:
-            self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
+            from woob.core import Woob
+            from woob.exceptions import AppValidation, SentOTPQuestion
+
+            log.info("Applying patches...")
+            self._apply_patches()
+
+            module = credentials.get("bank_module", "banquepopulaire")
+            log.info(f"Loading Woob backend: {module}")
+            self._woob = Woob()
+            params = {
+                "login": credentials["login"],
+                "password": credentials["password"],
+                "request_information": "interactive",
+            }
+            if credentials.get("region"):
+                params["cdetab"] = credentials["region"]
+
+            self._woob.load_backend(module, "bank", params=params)
+            self._backend = self._woob["bank"]
+
+            log.info("Fetching accounts (may trigger 2FA)...")
+            try:
+                accs = list(self._backend.iter_accounts())
+                log.info(f"Connected — {len(accs)} accounts found")
+                self.event_queue.put({"type": "status", "state": "connected"})
+                self.event_queue.put({
+                    "type": "accounts", "data": [
+                        {"id": a.id, "name": a.label, "balance": float(a.balance),
+                         "currency": a.currency_text, "type": str(a.type)} for a in accs
+                    ],
+                })
+            except SentOTPQuestion as e:
+                log.info(f"2FA SMS required: {e.message}")
+                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
+            except AppValidation as e:
+                log.info(f"2FA App required: {e.message}")
+                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
+
+        except Exception as e:
+            log.error(f"Connect failed: {e}", exc_info=True)
+            self.event_queue.put({"type": "error", "message": str(e)})
 
     def disconnect(self):
         self._backend = None
@@ -87,12 +107,14 @@ class WoobWorker(ConnectorWorker):
     def submit_2fa(self, code: str):
         if not self._backend:
             return
+        log.info(f"Submitting 2FA code...")
         try:
             self._backend.config["code_sms"].set(code)
         except Exception:
             self._backend.config["resume"].set("ok")
         try:
             accs = list(self._backend.iter_accounts())
+            log.info(f"2FA success — {len(accs)} accounts")
             self.event_queue.put({"type": "status", "state": "connected"})
             self.event_queue.put({
                 "type": "accounts", "data": [
@@ -100,4 +122,5 @@ class WoobWorker(ConnectorWorker):
                 ],
             })
         except Exception as e:
+            log.error(f"2FA failed: {e}")
             self.event_queue.put({"type": "error", "message": str(e)})
