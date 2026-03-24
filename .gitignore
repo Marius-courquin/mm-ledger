@@ -5,3 +5,7 @@ dist/
 .DS_Store
 .idea/
 .claude/
+data/
+__pycache__/
+*.pyc
+.venv/

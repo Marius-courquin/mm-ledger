@@ -1,0 +1,37 @@
+[project]
+name = "mm-ledger"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]",
+    "pydantic>=2",
+    "sqlalchemy>=2",
+    "alembic",
+    "sqlcipher3",
+    "websockets>=11",
+    "requests",
+    "selenium",
+    "ib_async",
+    "woob",
+    "pytesseract",
+    "Pillow",
+    "apscheduler>=3.10,<4",
+    "pandas",
+    "sse-starlette",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest",
+    "pytest-asyncio",
+    "httpx",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
