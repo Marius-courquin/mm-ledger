@@ -6,87 +6,126 @@ from src.schemas.portfolio import PortfolioResponse, PositionResponse
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 
 
-def _build_portfolio(connector_id: str | None = None) -> PortfolioResponse:
+def _parse_position(p: dict, cat_type: str, connector_id: str) -> PositionResponse:
+    qty = float(p.get("netSize", 0) or p.get("quantity", 0))
+    avg = float(p.get("averageBuyIn", 0) or p.get("avg_price", 0))
+    cur = float(p.get("currentPrice", 0) or p.get("current_price", 0))
+    val = qty * cur if cur else 0
+    invested = qty * avg
+    pnl = val - invested if invested else 0
+    return PositionResponse(
+        connector_id=connector_id,
+        account_id=p.get("accountId", connector_id),
+        instrument=p.get("isin", "") or p.get("instrument", ""),
+        name=p.get("name", ""),
+        symbol=p.get("shortName", "") or p.get("symbol", ""),
+        category=cat_type,
+        quantity=qty,
+        avg_price=avg,
+        current_price=cur,
+        value=val,
+        pnl=pnl,
+        pnl_pct=(pnl / invested * 100) if invested else 0,
+        currency=p.get("currencyId", "EUR") or p.get("currency", "EUR"),
+    )
+
+
+@router.get("")
+def get_portfolio(connector_id: str | None = None):
+    """Returns portfolio grouped by account, each account grouped by category."""
     all_data = deps.manager.get_all_live_data()
-    positions = []
-    total_cash = 0.0
+
+    accounts = []
+    grand_total_value = 0.0
+    grand_total_invested = 0.0
+    grand_total_cash = 0.0
 
     for cid, data in all_data.items():
         if connector_id and cid != connector_id:
             continue
 
-        # Parse balances (availableCash returns a list like [{"currencyId":"EUR","amount":1234.56}])
+        # Cash
         for b in data.get("balances", []):
             if isinstance(b, dict):
-                total_cash += float(b.get("amount", 0))
+                grand_total_cash += float(b.get("amount", 0))
 
-        # Parse positions (compactPortfolioByType returns {categories: [{categoryType, positions: [...]}]})
-        raw_positions = data.get("positions", [])
-        if isinstance(raw_positions, dict):
-            # TR format: {categories: [{categoryType, positions: [{netSize, averageBuyIn, ...}]}]}
-            for cat in raw_positions.get("categories", []):
+        # Positions — new format: list of account objects
+        raw = data.get("positions", [])
+        account_list = raw if isinstance(raw, list) else [raw] if isinstance(raw, dict) else []
+
+        for acc_data in account_list:
+            if not isinstance(acc_data, dict):
+                continue
+
+            acc_label = acc_data.get("label", acc_data.get("productType", "Unknown"))
+            sec_acc_no = acc_data.get("secAccNo", "")
+            product_type = acc_data.get("productType", "DEFAULT")
+
+            categories_out = []
+            acc_total_value = 0.0
+            acc_total_invested = 0.0
+
+            for cat in acc_data.get("categories", []):
                 cat_type = cat.get("categoryType", "")
+                positions = []
                 for p in cat.get("positions", []):
-                    qty = float(p.get("netSize", 0))
-                    avg = float(p.get("averageBuyIn", 0))
-                    cur = float(p.get("currentPrice", 0))
-                    val = qty * cur if cur else float(p.get("currentValue", 0))
-                    invested = qty * avg
-                    pnl = val - invested if invested else 0
-                    positions.append(PositionResponse(
-                        connector_id=cid,
-                        account_id=p.get("accountId", cid),
-                        instrument=p.get("isin", ""),
-                        name=p.get("name", ""),
-                        symbol=p.get("shortName", ""),
-                        category=cat_type,
-                        quantity=qty,
-                        avg_price=avg,
-                        current_price=cur,
-                        value=val,
-                        pnl=pnl,
-                        pnl_pct=(pnl / invested * 100) if invested else 0,
-                        currency=p.get("currencyId", "EUR"),
-                    ))
-        elif isinstance(raw_positions, list):
-            for p in raw_positions:
-                if isinstance(p, dict):
-                    positions.append(PositionResponse(
-                        connector_id=cid,
-                        account_id=p.get("account_id", cid),
-                        instrument=p.get("instrument", ""),
-                        name=p.get("name", ""),
-                        symbol=p.get("symbol", ""),
-                        category=p.get("category", ""),
-                        quantity=float(p.get("quantity", 0)),
-                        avg_price=float(p.get("avg_price", 0)),
-                        current_price=float(p.get("current_price", 0)),
-                        value=float(p.get("value", 0)),
-                        pnl=float(p.get("pnl", 0)),
-                        pnl_pct=float(p.get("pnl_pct", 0)),
-                        currency=p.get("currency", "EUR"),
-                    ))
+                    pos = _parse_position(p, cat_type, cid)
+                    positions.append(pos)
+                    acc_total_value += pos.value
+                    acc_total_invested += pos.quantity * pos.avg_price
 
-    total_positions_value = sum(p.value for p in positions)
-    total_invested = sum(p.quantity * p.avg_price for p in positions)
-    total_value = total_positions_value + total_cash
-    total_pnl = total_positions_value - total_invested if total_invested else 0
+                if positions:
+                    cat_value = sum(p.value for p in positions)
+                    cat_invested = sum(p.quantity * p.avg_price for p in positions)
+                    cat_pnl = cat_value - cat_invested
+                    categories_out.append({
+                        "categoryType": cat_type,
+                        "total_value": cat_value,
+                        "total_invested": cat_invested,
+                        "pnl": cat_pnl,
+                        "pnl_pct": (cat_pnl / cat_invested * 100) if cat_invested else 0,
+                        "positions": [p.model_dump() for p in positions],
+                    })
 
-    return PortfolioResponse(
-        total_value=total_value,
-        total_invested=total_invested,
-        total_pnl=total_pnl,
-        total_pnl_pct=(total_pnl / total_invested * 100) if total_invested else 0,
-        currency="EUR",
-        positions=positions,
-    )
+            acc_pnl = acc_total_value - acc_total_invested
+            # Find cash for this account
+            acc_cash = 0.0
+            for b in data.get("balances", []):
+                if isinstance(b, dict):
+                    # Match by productType or just use first cash entry
+                    if b.get("productType") == product_type or not b.get("productType"):
+                        acc_cash = float(b.get("amount", 0))
 
+            accounts.append({
+                "secAccNo": sec_acc_no,
+                "label": acc_label,
+                "productType": product_type,
+                "cash": acc_cash,
+                "positions_value": acc_total_value,
+                "total_value": acc_total_value + acc_cash,
+                "total_invested": acc_total_invested,
+                "pnl": acc_pnl,
+                "pnl_pct": (acc_pnl / acc_total_invested * 100) if acc_total_invested else 0,
+                "categories": categories_out,
+            })
 
-@router.get("", response_model=PortfolioResponse)
-def get_portfolio(connector_id: str | None = None):
-    return _build_portfolio(connector_id)
+            grand_total_value += acc_total_value
+            grand_total_invested += acc_total_invested
+
+    grand_total_value += grand_total_cash
+    grand_total_pnl = (grand_total_value - grand_total_cash) - grand_total_invested
+
+    return {
+        "total_value": grand_total_value,
+        "total_cash": grand_total_cash,
+        "total_invested": grand_total_invested,
+        "total_pnl": grand_total_pnl,
+        "total_pnl_pct": (grand_total_pnl / grand_total_invested * 100) if grand_total_invested else 0,
+        "currency": "EUR",
+        "accounts": accounts,
+    }
 
 
-@router.get("/{connector_id}", response_model=PortfolioResponse)
+@router.get("/{connector_id}")
 def get_portfolio_by_connector(connector_id: str):
-    return _build_portfolio(connector_id)
+    return get_portfolio(connector_id=connector_id)

@@ -174,8 +174,16 @@ class TradeRepublicWorker(ConnectorWorker):
             log.error(f"2FA error: {e}")
             self.event_queue.put({"type": "error", "message": str(e)})
 
+    # Map TR productType to human-readable account labels
+    PRODUCT_LABELS = {
+        "DEFAULT": "CTO",
+        "PEA": "PEA",
+        "CRYPTO": "Crypto",
+        "PRIVATE_EQUITY": "Private Equity",
+    }
+
     def _auto_fetch(self):
-        """Fetch cash + positions for all accounts, like the POC JS did."""
+        """Fetch cash + positions + live prices for all accounts."""
         try:
             log.info("Auto-fetching data — opening WS...")
             import websockets.sync.client as ws_client
@@ -183,41 +191,88 @@ class TradeRepublicWorker(ConnectorWorker):
                 log.info("WS connected, sending handshake...")
                 self._ws_connect(ws)
 
-                # 1. Get accounts list
+                # 1. Accounts
                 accounts_data = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
-                log.info(f"Accounts: {json.dumps(accounts_data)[:300]}")
+                log.info(f"Accounts: {len(accounts_data.get('accounts', []))} found")
                 if accounts_data:
                     self.event_queue.put({"type": "accounts", "data": accounts_data})
 
-                # 2. Get cash
-                cash = self._ws_sub(ws, {"type": "availableCash", "token": self._session_token})
-                log.info(f"Cash: {cash}")
-                if cash:
-                    # cash is a list like [{"accountNumber","currencyId","amount"}]
-                    self.event_queue.put({"type": "balances", "data": cash if isinstance(cash, list) else [cash]})
-
-                # 3. Get positions per account (compactPortfolioByType needs secAccNo)
-                all_positions = {"categories": [], "products": []}
                 accs = accounts_data.get("accounts", []) if isinstance(accounts_data, dict) else []
+
+                # 2. Cash per account
+                cash = self._ws_sub(ws, {"type": "availableCash", "token": self._session_token})
+                # Map cash to accounts
+                cash_list = cash if isinstance(cash, list) else [cash] if cash else []
+                for c in cash_list:
+                    # Find which account this cash belongs to
+                    for acc in accs:
+                        if acc.get("cashAccountNumber") == c.get("accountNumber"):
+                            c["productType"] = acc.get("productType", "DEFAULT")
+                            c["label"] = self.PRODUCT_LABELS.get(acc["productType"], acc["productType"])
+                            break
+                log.info(f"Cash: {cash_list}")
+                self.event_queue.put({"type": "balances", "data": cash_list})
+
+                # 3. Positions per account + live prices
+                all_accounts_data = []
                 for acc in accs:
                     sec_acc_no = acc.get("securitiesAccountNumber")
+                    product_type = acc.get("productType", "DEFAULT")
+                    account_label = self.PRODUCT_LABELS.get(product_type, product_type)
                     if not sec_acc_no:
                         continue
+
                     portfolio = self._ws_sub(ws, {
                         "type": "compactPortfolioByType",
                         "token": self._session_token,
                         "secAccNo": sec_acc_no,
                     })
-                    log.info(f"Portfolio {sec_acc_no}: {json.dumps(portfolio)[:300]}")
-                    if portfolio and isinstance(portfolio, dict):
-                        for cat in portfolio.get("categories", []):
-                            # Tag each position with the account
-                            for pos in cat.get("positions", []):
-                                pos["accountId"] = sec_acc_no
-                            all_positions["categories"].append(cat)
+                    if not portfolio or not isinstance(portfolio, dict):
+                        continue
 
-                self.event_queue.put({"type": "positions", "data": all_positions})
-                log.info(f"Auto-fetch done: {len(all_positions['categories'])} categories")
+                    # Fetch ticker prices for each position
+                    for cat in portfolio.get("categories", []):
+                        cat_type = cat.get("categoryType", "")
+                        for pos in cat.get("positions", []):
+                            isin = pos.get("isin", "")
+                            # Crypto uses bare ISIN, stocks use ISIN.LSX
+                            ticker_id = isin if cat_type == "cryptos" else f"{isin}.LSX"
+                            try:
+                                ticker = self._ws_sub(ws, {
+                                    "type": "ticker",
+                                    "token": self._session_token,
+                                    "id": ticker_id,
+                                })
+                                if ticker:
+                                    price = (ticker.get("last", {}).get("price")
+                                             or ticker.get("bid", {}).get("price")
+                                             or ticker.get("ask", {}).get("price"))
+                                    if price:
+                                        pos["currentPrice"] = float(price)
+                                except Exception as e:
+                                    log.warning(f"Ticker {ticker_id}: {e}")
+
+                            # Tag position with account info
+                            pos["accountId"] = sec_acc_no
+                            pos["accountLabel"] = account_label
+                            pos["productType"] = product_type
+
+                    all_accounts_data.append({
+                        "secAccNo": sec_acc_no,
+                        "productType": product_type,
+                        "label": account_label,
+                        **portfolio,
+                    })
+                    log.info(f"Portfolio {account_label} ({sec_acc_no}): {sum(len(c.get('positions', [])) for c in portfolio.get('categories', []))} positions")
+
+                self.event_queue.put({"type": "positions", "data": all_accounts_data})
+                total_positions = sum(
+                    len(pos)
+                    for a in all_accounts_data
+                    for c in a.get("categories", [])
+                    for pos in [c.get("positions", [])]
+                )
+                log.info(f"Auto-fetch done: {len(all_accounts_data)} accounts, {total_positions} positions with prices")
 
         except Exception as e:
             log.error(f"Auto-fetch error: {e}")
