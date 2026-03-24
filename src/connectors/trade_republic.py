@@ -46,19 +46,26 @@ class TradeRepublicWorker(ConnectorWorker):
     def _get_waf_token(self) -> str:
         from selenium import webdriver
         from selenium.webdriver.chrome.options import Options
-        from selenium.webdriver.support.ui import WebDriverWait
-        from selenium.webdriver.support import expected_conditions as EC
         import time
 
         options = Options()
+        # Use Brave if available (better WAF bypass than vanilla Chromium)
+        brave_path = "/Applications/Brave Browser.app/Contents/MacOS/Brave Browser"
+        import os
+        if os.path.exists(brave_path):
+            options.binary_location = brave_path
+            log.info("Using Brave for WAF bypass")
+        else:
+            log.info("Brave not found, using default Chrome")
         options.add_argument("--headless=new")
         options.add_argument("--no-sandbox")
         options.add_argument("--disable-dev-shm-usage")
         options.add_argument("--disable-gpu")
         options.add_argument("--window-size=400,300")
+        options.add_argument("--window-position=9999,9999")
         options.add_argument("--disable-notifications")
 
-        log.info("Launching headless Chrome...")
+        log.info("Launching headless browser...")
         driver = webdriver.Chrome(options=options)
         driver.set_page_load_timeout(30)
 
@@ -110,7 +117,14 @@ class TradeRepublicWorker(ConnectorWorker):
             timeout=15,
         )
         log.info(f"Login response: {resp.status_code}")
-        data = resp.json()
+        if resp.status_code != 200:
+            log.error(f"Login failed: {resp.text[:200]}")
+            raise Exception(f"Login HTTP {resp.status_code}")
+        try:
+            data = resp.json()
+        except Exception:
+            log.error(f"Login response not JSON: {resp.text[:200]}")
+            raise Exception("Login response was not JSON (likely WAF block)")
 
         if "processId" in data:
             return data["processId"]
