@@ -27,7 +27,8 @@ class TradeRepublicWorker(ConnectorWorker):
 
         try:
             log.info("Starting login via browser (WAF bypass)...")
-            result = self._browser_login()
+            waf_token, cookies = self._browser_login()
+            result = self._api_login(waf_token, cookies)
 
             if result.get("processId"):
                 self._pending_process_id = result["processId"]
@@ -95,38 +96,49 @@ class TradeRepublicWorker(ConnectorWorker):
                     break
 
             if not waf_token:
-                # Try JS API fallback
                 waf_token = driver.execute_script(
                     "return window.AwsWafIntegration?.getToken()"
                 ) or ""
                 log.info(f"WAF from JS: {'OK' if waf_token else 'EMPTY'}")
 
-            # Make the login call FROM the browser context
-            log.info("Sending login request from browser...")
-            result = driver.execute_script("""
-                const [phone, pin, wafToken] = arguments;
-                const resp = await fetch("https://api.traderepublic.com/api/v1/auth/web/login", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                        ...(wafToken ? {"x-aws-waf-token": wafToken} : {})
-                    },
-                    body: JSON.stringify({phoneNumber: phone, pin: pin})
-                });
-                const text = await resp.text();
-                return {status: resp.status, body: text};
-            """, self._phone, self._pin, waf_token)
+            # Collect ALL cookies from the browser session
+            all_cookies = {c["name"]: c["value"] for c in driver.get_cookies()}
+            log.info(f"Cookies: {list(all_cookies.keys())}")
 
-            log.info(f"Login response: {result['status']}")
-
-            if result["status"] != 200:
-                raise Exception(f"Login HTTP {result['status']}: {result['body'][:200]}")
-
-            data = json.loads(result["body"])
-            return data
+            return waf_token, all_cookies
 
         finally:
             driver.quit()
+
+    def _api_login(self, waf_token: str, cookies: dict) -> dict:
+        """Login via Python requests, passing the WAF token + browser cookies."""
+        import requests
+
+        session = requests.Session()
+        for name, value in cookies.items():
+            session.cookies.set(name, value, domain=".traderepublic.com")
+
+        headers = {
+            "Content-Type": "application/json",
+            "User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/146.0.0.0 Safari/537.36",
+        }
+        if waf_token:
+            headers["x-aws-waf-token"] = waf_token
+
+        log.info("Sending login request...")
+        resp = session.post(
+            "https://api.traderepublic.com/api/v1/auth/web/login",
+            json={"phoneNumber": self._phone, "pin": self._pin},
+            headers=headers,
+            timeout=15,
+        )
+        log.info(f"Login response: {resp.status_code}")
+
+        if resp.status_code != 200:
+            log.error(f"Login body: {resp.text[:300]}")
+            raise Exception(f"Login HTTP {resp.status_code}")
+
+        return resp.json()
 
     def disconnect(self):
         self._session_token = None
