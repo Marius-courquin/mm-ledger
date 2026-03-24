@@ -236,6 +236,9 @@ class TradeRepublicWorker(ConnectorWorker):
                         for pos in cat.get("positions", []):
                             isin = pos.get("isin", "")
                             # Crypto uses bare ISIN, stocks use ISIN.LSX
+                            # Crypto = bare ISIN, private equity = skip, stocks = ISIN.LSX
+                            if cat_type == "privateMarkets":
+                                continue  # No ticker available
                             ticker_id = isin if cat_type == "cryptos" else f"{isin}.LSX"
                             try:
                                 ticker = self._ws_sub(ws, {
@@ -243,14 +246,16 @@ class TradeRepublicWorker(ConnectorWorker):
                                     "token": self._session_token,
                                     "id": ticker_id,
                                 })
-                                if ticker:
+                                log.info(f"Ticker {ticker_id}: {json.dumps(ticker)[:150] if ticker else 'None'}")
+                                if ticker and isinstance(ticker, dict):
                                     price = (ticker.get("last", {}).get("price")
                                              or ticker.get("bid", {}).get("price")
                                              or ticker.get("ask", {}).get("price"))
                                     if price:
                                         pos["currentPrice"] = float(price)
+                                        log.info(f"  -> price={price}")
                             except Exception as e:
-                                log.warning(f"Ticker {ticker_id}: {e}")
+                                log.warning(f"Ticker {ticker_id} failed: {e}")
 
                             # Tag position with account info
                             pos["accountId"] = sec_acc_no
