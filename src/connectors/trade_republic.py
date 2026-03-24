@@ -333,16 +333,10 @@ class TradeRepublicWorker(ConnectorWorker):
         """Subscribe, receive one response, unsubscribe. Returns parsed data."""
         self._ws_msg_id += 1
         mid = self._ws_msg_id
-        msg = f"sub {mid} {json.dumps(payload)}"
-        log.info(f"WS send: {msg[:120]}")
-        ws.send(msg)
+        ws.send(f"sub {mid} {json.dumps(payload)}")
         raw = ws.recv(timeout=15)
-        log.info(f"WS recv: {raw[:200]}")
         ws.send(f"unsub {mid}")
-        try:
-            ws.recv(timeout=5)  # unsub ack
-        except Exception:
-            pass
+        # Don't wait for unsub ack — TR doesn't always send one and it adds 5s per call
         return self._parse_ws_response(raw)
 
     def _parse_ws_response(self, raw: str):
