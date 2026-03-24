@@ -9,6 +9,7 @@ type VaultState = 'loading' | 'uninitialized' | 'locked' | 'unlocked';
 type TwoFARequest = {
   connectorId: string;
   detail: string;
+  method: 'sms' | 'app';
 } | null;
 
 interface AppContextType {
@@ -44,7 +45,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       updateConnectorState(connectorId, state, detail);
 
       if (state === 'waiting_2fa') {
-        setTwoFARequest({ connectorId, detail: detail ?? 'Enter your 2FA code' });
+        const method = data.method ?? 'sms';
+        setTwoFARequest({ connectorId, detail: detail ?? 'Vérification requise', method });
       }
     },
     [updateConnectorState],

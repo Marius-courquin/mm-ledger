@@ -62,10 +62,10 @@ class WoobWorker(ConnectorWorker):
                 })
             except SentOTPQuestion as e:
                 log.info(f"2FA SMS required: {e.message}")
-                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
+                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message), "method": "sms"})
             except AppValidation as e:
                 log.info(f"2FA App required: {e.message}")
-                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message)})
+                self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message), "method": "app"})
 
         except Exception as e:
             log.error(f"Connect failed: {e}", exc_info=True)

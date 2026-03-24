@@ -58,6 +58,7 @@ function AppRoutes() {
         <TwoFADialog
           connectorId={twoFARequest.connectorId}
           detail={twoFARequest.detail}
+          method={twoFARequest.method}
           onSubmit={async (code) => {
             await submit2FA(twoFARequest.connectorId, code);
             setTwoFARequest(null);

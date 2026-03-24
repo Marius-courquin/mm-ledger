@@ -64,7 +64,8 @@ class TradeRepublicWorker(ConnectorWorker):
                 log.info(f"2FA required, processId={result['processId']}, countdown={countdown}s")
                 self.event_queue.put({
                     "type": "status", "state": "waiting_2fa",
-                    "detail": f"Enter the 4-digit code from Trade Republic app ({countdown}s)",
+                    "detail": f"Entrez le code à 4 chiffres depuis l'app Trade Republic ({countdown}s)",
+                    "method": "sms",
                 })
             else:
                 log.warning(f"Unexpected login response: {result}")
