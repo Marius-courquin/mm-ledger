@@ -177,9 +177,10 @@ class TradeRepublicWorker(ConnectorWorker):
     def _auto_fetch(self):
         """Fetch cash + positions immediately after connection."""
         try:
-            log.info("Auto-fetching data...")
+            log.info("Auto-fetching data — opening WS...")
             import websockets.sync.client as ws_client
-            with ws_client.connect("wss://api.traderepublic.com") as ws:
+            with ws_client.connect("wss://api.traderepublic.com", close_timeout=10, open_timeout=10) as ws:
+                log.info("WS connected, sending handshake...")
                 self._ws_connect(ws)
 
                 cash = self._ws_sub(ws, {"type": "availableCash", "token": self._session_token})
@@ -244,17 +245,21 @@ class TradeRepublicWorker(ConnectorWorker):
             "clientVersion": "3.151.3",
         }
         ws.send(f"connect 31 {json.dumps(locale)}")
-        ws.recv()  # ack
+        ack = ws.recv(timeout=10)
+        log.info(f"WS connect ack: {ack[:100]}")
 
     def _ws_sub(self, ws, payload: dict):
         """Subscribe, receive one response, unsubscribe. Returns parsed data."""
         self._ws_msg_id += 1
         mid = self._ws_msg_id
-        ws.send(f"sub {mid} {json.dumps(payload)}")
-        raw = ws.recv()
+        msg = f"sub {mid} {json.dumps(payload)}"
+        log.info(f"WS send: {msg[:120]}")
+        ws.send(msg)
+        raw = ws.recv(timeout=15)
+        log.info(f"WS recv: {raw[:200]}")
         ws.send(f"unsub {mid}")
         try:
-            ws.recv()  # unsub ack
+            ws.recv(timeout=5)  # unsub ack
         except Exception:
             pass
         return self._parse_ws_response(raw)
@@ -277,7 +282,7 @@ class TradeRepublicWorker(ConnectorWorker):
     def _ws_one_shot(self, sub_type: str) -> list[dict]:
         """Open WS, connect, subscribe once, close."""
         import websockets.sync.client as ws_client
-        with ws_client.connect("wss://api.traderepublic.com") as ws:
+        with ws_client.connect("wss://api.traderepublic.com", close_timeout=10, open_timeout=10) as ws:
             self._ws_connect(ws)
             data = self._ws_sub(ws, {"type": sub_type, "token": self._session_token})
             return data if data else []

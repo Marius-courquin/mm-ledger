@@ -32,3 +32,21 @@ def health():
 @router.get("/api/scheduler/status")
 def scheduler_status():
     return {"jobs": get_job_status()}
+
+
+@router.get("/api/debug/live-data")
+def debug_live_data():
+    """Debug: show raw live data cache from workers."""
+    import json
+    data = deps.manager.get_all_live_data()
+    # Truncate large values for readability
+    result = {}
+    for cid, d in data.items():
+        result[cid] = {}
+        for key, val in d.items():
+            if isinstance(val, (list, dict)):
+                s = json.dumps(val)
+                result[cid][key] = json.loads(s[:2000]) if len(s) > 2000 else val
+            else:
+                result[cid][key] = val
+    return result
