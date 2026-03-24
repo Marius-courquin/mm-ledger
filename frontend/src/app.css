@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "@heroui/styles";
+
+:root {
+  color-scheme: dark;
+  font-family: "Inter", sans-serif;
+
+  /* Core */
+  --mm-bg: #102b3f;
+  --mm-surface: #062726;
+  --mm-surface-elevated: #143a42;
+  --mm-accent-gold: #c9a84c;
+  --mm-accent-lavender: #a06cd5;
+  --mm-accent-lilac: #6247aa;
+  --mm-border: #1a3d4d;
+
+  /* Text */
+  --mm-text-primary: #f0ece4;
+  --mm-text-secondary: #e2cfea;
+  --mm-text-muted: rgba(226, 207, 234, 0.5);
+
+  /* Semantic */
+  --mm-gain: #c9a84c;
+  --mm-loss: rgba(226, 207, 234, 0.44);
+
+  /* Chart */
+  --mm-chart-1: #2c7ce5;
+  --mm-chart-2: #f8c421;
+  --mm-chart-3: #49cc5c;
+  --mm-chart-4: #6434e9;
+  --mm-chart-5: #fb6640;
+  --mm-chart-6: #f82553;
+
+  /* Radius */
+  --mm-radius-sm: 4px;
+  --mm-radius-md: 8px;
+  --mm-radius-lg: 12px;
+  --mm-radius-xl: 16px;
+}
+
+@theme inline {
+  --color-mm-bg: var(--mm-bg);
+  --color-mm-surface: var(--mm-surface);
+  --color-mm-surface-elevated: var(--mm-surface-elevated);
+  --color-mm-gold: var(--mm-accent-gold);
+  --color-mm-lavender: var(--mm-accent-lavender);
+  --color-mm-lilac: var(--mm-accent-lilac);
+  --color-mm-border: var(--mm-border);
+  --color-mm-text: var(--mm-text-primary);
+  --color-mm-text-secondary: var(--mm-text-secondary);
+  --color-mm-text-muted: var(--mm-text-muted);
+  --color-mm-gain: var(--mm-gain);
+  --color-mm-loss: var(--mm-loss);
+  --color-mm-chart-1: var(--mm-chart-1);
+  --color-mm-chart-2: var(--mm-chart-2);
+  --color-mm-chart-3: var(--mm-chart-3);
+  --color-mm-chart-4: var(--mm-chart-4);
+  --color-mm-chart-5: var(--mm-chart-5);
+  --color-mm-chart-6: var(--mm-chart-6);
+}
+
+body {
+  margin: 0;
+  background: var(--mm-bg);
+  color: var(--mm-text-primary);
+}
+
+.tabular-nums {
+  font-variant-numeric: tabular-nums;
+}
