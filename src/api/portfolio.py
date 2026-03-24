@@ -128,15 +128,15 @@ def get_portfolio(connector_id: str | None = None):
                         "total_value": cat_value,
                         "total_invested": cat_invested,
                         "pnl": cat_pnl,
-                        "pnl_pct": (cat_pnl / cat_invested * 100) if cat_invested else 0,
+                        "pnl_pct": (cat_pnl / cat_invested * 100) if (cat_pnl is not None and cat_invested) else None,
                         "categories": [cat_out],
                     })
                 else:
                     main_categories.append(cat_out)
 
             # Main account with only stocksAndETFs etc.
-            main_value = sum(c["total_value"] for c in main_categories)
-            main_invested = sum(c["total_invested"] for c in main_categories)
+            main_value = sum(c["total_value"] or 0 for c in main_categories)
+            main_invested = sum(c["total_invested"] or 0 for c in main_categories)
             main_pnl = main_value - main_invested
             accounts.append({
                 "secAccNo": sec_acc_no,
