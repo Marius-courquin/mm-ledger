@@ -249,8 +249,8 @@ class TradeRepublicWorker(ConnectorWorker):
                                              or ticker.get("ask", {}).get("price"))
                                     if price:
                                         pos["currentPrice"] = float(price)
-                                except Exception as e:
-                                    log.warning(f"Ticker {ticker_id}: {e}")
+                            except Exception as e:
+                                log.warning(f"Ticker {ticker_id}: {e}")
 
                             # Tag position with account info
                             pos["accountId"] = sec_acc_no
