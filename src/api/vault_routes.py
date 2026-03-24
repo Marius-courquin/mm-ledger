@@ -16,6 +16,7 @@ def vault_setup(req: PasswordRequest):
     if deps.vault.status != "uninitialized":
         raise HTTPException(409, "Vault already initialized. Use POST /api/vault/unlock.")
     deps.vault.setup(req.password)
+    deps.vault.unlock(req.password)
     return {"status": "created"}
 
 
