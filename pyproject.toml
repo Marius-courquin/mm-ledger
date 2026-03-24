@@ -14,6 +14,8 @@ dependencies = [
     "selenium",
     "ib_async",
     "woob",
+    "python-jose",
+    "chompjs",
     "pytesseract",
     "Pillow",
     "apscheduler>=3.10,<4",
