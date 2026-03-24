@@ -3,6 +3,7 @@ import time
 from fastapi import APIRouter
 
 from src.api import deps
+from src.scheduler import get_job_status, scheduler
 
 router = APIRouter(tags=["system"])
 
@@ -21,7 +22,7 @@ def health():
     return {
         "status": "ok" if db_ok == "ok" else "degraded",
         "vault": deps.vault.status if deps.vault else "uninitialized",
-        "scheduler": "running",
+        "scheduler": "running" if scheduler.running else "stopped",
         "workers": workers,
         "db": db_ok,
         "uptime_seconds": int(time.time() - _start_time),
@@ -30,4 +31,4 @@ def health():
 
 @router.get("/api/scheduler/status")
 def scheduler_status():
-    return {"jobs": []}
+    return {"jobs": get_job_status()}

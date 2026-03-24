@@ -19,7 +19,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.vault = Vault(data / "vault.db")
         deps.db_engine = create_engine_and_tables(data / "ledger.db")
         deps.manager = ConnectorManager()
+        from src.scheduler import setup_scheduler
+        setup_scheduler()
         yield
+        from src.scheduler import scheduler
+        scheduler.shutdown(wait=False)
         deps.manager.stop_all()
         deps.vault.lock()
         if deps.db_engine:
