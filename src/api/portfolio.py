@@ -9,10 +9,20 @@ router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
 def _parse_position(p: dict, cat_type: str, connector_id: str) -> PositionResponse:
     qty = float(p.get("netSize", 0) or p.get("quantity", 0))
     avg = float(p.get("averageBuyIn", 0) or p.get("avg_price", 0))
-    cur = float(p.get("currentPrice", 0) or p.get("current_price", 0))
-    val = qty * cur if cur else 0
+    cur_raw = p.get("currentPrice") or p.get("current_price")
+    cur = float(cur_raw) if cur_raw else None
     invested = qty * avg
-    pnl = val - invested if invested else 0
+
+    # Only compute value/pnl when we have a live price
+    if cur and cur > 0:
+        val = qty * cur
+        pnl = val - invested
+        pnl_pct = (pnl / invested * 100) if invested else 0
+    else:
+        val = None
+        pnl = None
+        pnl_pct = None
+
     return PositionResponse(
         connector_id=connector_id,
         account_id=p.get("accountId", connector_id),
@@ -25,7 +35,7 @@ def _parse_position(p: dict, cat_type: str, connector_id: str) -> PositionRespon
         current_price=cur,
         value=val,
         pnl=pnl,
-        pnl_pct=(pnl / invested * 100) if invested else 0,
+        pnl_pct=pnl_pct,
         currency=p.get("currencyId", "EUR") or p.get("currency", "EUR"),
     )
 
@@ -71,19 +81,22 @@ def get_portfolio(connector_id: str | None = None):
                 for p in cat.get("positions", []):
                     pos = _parse_position(p, cat_type, cid)
                     positions.append(pos)
-                    acc_total_value += pos.value
+                    if pos.value is not None:
+                        acc_total_value += pos.value
                     acc_total_invested += pos.quantity * pos.avg_price
 
                 if positions:
-                    cat_value = sum(p.value for p in positions)
-                    cat_invested = sum(p.quantity * p.avg_price for p in positions)
-                    cat_pnl = cat_value - cat_invested
+                    priced = [p for p in positions if p.value is not None]
+                    cat_value = sum(p.value for p in priced)
+                    cat_invested = sum(p.quantity * p.avg_price for p in priced)
+                    cat_pnl = cat_value - cat_invested if priced else None
+                    all_invested = sum(p.quantity * p.avg_price for p in positions)
                     categories_out.append({
                         "categoryType": cat_type,
-                        "total_value": cat_value,
-                        "total_invested": cat_invested,
+                        "total_value": cat_value if priced else None,
+                        "total_invested": all_invested,
                         "pnl": cat_pnl,
-                        "pnl_pct": (cat_pnl / cat_invested * 100) if cat_invested else 0,
+                        "pnl_pct": (cat_pnl / cat_invested * 100) if (cat_pnl is not None and cat_invested) else None,
                         "positions": [p.model_dump() for p in positions],
                     })
 

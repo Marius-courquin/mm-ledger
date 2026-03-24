@@ -57,7 +57,7 @@ const ACCOUNT_ICON_COLORS: Record<string, string> = {
 
 function PositionRow({ pos, totalValue, currency }: { pos: Position; totalValue: number; currency: string }) {
   const weight = totalValue > 0 ? (pos.value / totalValue) * 100 : 0;
-  const hasPrice = pos.current_price > 0;
+  const hasPrice = pos.current_price != null && pos.current_price > 0;
 
   return (
     <tr className="border-t border-mm-border/50 hover:bg-white/[0.02] transition-colors">
@@ -120,7 +120,7 @@ function CategorySection({ category, currency, accountValue }: {
 }) {
   const [open, setOpen] = useState(true);
   const label = CATEGORY_LABELS[category.categoryType] ?? category.categoryType;
-  const hasValue = category.total_value > 0;
+  const hasValue = category.total_value != null && category.total_value > 0;
   const positionsWithPrice = category.positions.filter(p => p.current_price > 0);
   const positionsNoPrice = category.positions.filter(p => p.current_price <= 0);
 
@@ -140,18 +140,24 @@ function CategorySection({ category, currency, accountValue }: {
         <span className="text-[12px] text-mm-text-muted tabular-nums">
           {category.positions.length} position{category.positions.length > 1 ? 's' : ''}
         </span>
-        {hasValue && (
+        {hasValue ? (
           <>
             <span className="text-[13px] font-medium text-mm-text tabular-nums ml-4">
               {formatCurrency(category.total_value, currency)}
             </span>
-            <span className={`text-[12px] font-medium tabular-nums ml-2 ${
-              category.pnl_pct >= 0 ? 'text-mm-gain' : 'text-red-400'
-            }`}>
-              {category.pnl_pct >= 0 ? '+' : ''}{category.pnl_pct.toFixed(2)}%
-            </span>
+            {category.pnl_pct != null && (
+              <span className={`text-[12px] font-medium tabular-nums ml-2 ${
+                category.pnl_pct >= 0 ? 'text-mm-gain' : 'text-red-400'
+              }`}>
+                {category.pnl_pct >= 0 ? '+' : ''}{category.pnl_pct.toFixed(2)}%
+              </span>
+            )}
           </>
-        )}
+        ) : category.total_invested > 0 ? (
+          <span className="text-[13px] text-mm-text-muted tabular-nums ml-4">
+            Investi {formatCurrency(category.total_invested, currency)}
+          </span>
+        ) : null}
       </button>
 
       {open && (

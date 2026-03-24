@@ -9,10 +9,10 @@ class PositionResponse(BaseModel):
     category: str | None = None
     quantity: float = 0
     avg_price: float = 0
-    current_price: float = 0
-    value: float = 0
-    pnl: float = 0
-    pnl_pct: float = 0
+    current_price: float | None = None
+    value: float | None = None
+    pnl: float | None = None
+    pnl_pct: float | None = None
     currency: str = "EUR"
 
 class PortfolioResponse(BaseModel):
