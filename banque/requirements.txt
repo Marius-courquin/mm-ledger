@@ -1,0 +1,4 @@
+woob
+python-jose
+chompjs
+pytesseract
