@@ -21,6 +21,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.manager = ConnectorManager()
         from src.scheduler import setup_scheduler
         setup_scheduler()
+        from src.connectors.woob_bank import WoobWorker
+        deps.manager.register_worker_class("woob_bank", WoobWorker)
         yield
         from src.scheduler import scheduler
         scheduler.shutdown(wait=False)
