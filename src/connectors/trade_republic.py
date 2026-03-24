@@ -239,14 +239,35 @@ class TradeRepublicWorker(ConnectorWorker):
                             # Crypto = bare ISIN, private equity = skip, stocks = ISIN.LSX
                             if cat_type == "privateMarkets":
                                 continue  # No ticker available
-                            ticker_id = isin if cat_type == "cryptos" else f"{isin}.LSX"
-                            try:
+
+                            # Build ticker ID: stocks = ISIN.LSX, crypto = try multiple formats
+                            if cat_type == "cryptos":
+                                # Try: bare ISIN, then shortName-based formats
+                                crypto_ids = [isin, f"{isin}.CXTR"]
+                                ticker = None
+                                for tid in crypto_ids:
+                                    try:
+                                        ticker = self._ws_sub(ws, {
+                                            "type": "ticker",
+                                            "token": self._session_token,
+                                            "id": tid,
+                                        })
+                                        if ticker and not ticker.get("errors"):
+                                            log.info(f"Crypto ticker {tid}: OK")
+                                            break
+                                        ticker = None
+                                    except Exception:
+                                        continue
+                            else:
+                                ticker_id = f"{isin}.LSX"
                                 ticker = self._ws_sub(ws, {
                                     "type": "ticker",
                                     "token": self._session_token,
                                     "id": ticker_id,
                                 })
-                                log.info(f"Ticker {ticker_id}: {json.dumps(ticker)[:150] if ticker else 'None'}")
+
+                            try:
+                                log.info(f"Ticker {isin}: {json.dumps(ticker)[:150] if ticker else 'None'}")
                                 if ticker and isinstance(ticker, dict):
                                     price = (ticker.get("last", {}).get("price")
                                              or ticker.get("bid", {}).get("price")
