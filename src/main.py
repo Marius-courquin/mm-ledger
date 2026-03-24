@@ -23,6 +23,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         setup_scheduler()
         from src.connectors.woob_bank import WoobWorker
         deps.manager.register_worker_class("woob_bank", WoobWorker)
+        from src.connectors.ibkr import IBKRWorker
+        deps.manager.register_worker_class("ibkr", IBKRWorker)
         yield
         from src.scheduler import scheduler
         scheduler.shutdown(wait=False)
