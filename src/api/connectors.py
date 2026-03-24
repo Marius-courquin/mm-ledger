@@ -64,15 +64,24 @@ def list_connectors():
     return result
 
 
+def _slugify(text: str) -> str:
+    import unicodedata, re
+    text = unicodedata.normalize("NFD", text)
+    text = text.encode("ascii", "ignore").decode("ascii")
+    text = re.sub(r"[^a-z0-9]+", "_", text.lower()).strip("_")
+    return text or "connector"
+
+
 @router.post("", response_model=ConnectorResponse, status_code=201)
 def create_connector(req: ConnectorCreate):
     _require_vault()
+    connector_id = req.id or _slugify(req.label)
     with deps.db_engine.begin() as conn:
         conn.execute(insert(connectors).values(
-            id=req.id, type=req.type, label=req.label, config=req.config,
+            id=connector_id, type=req.type, label=req.label, config=req.config,
         ))
-    deps.vault.store(req.id, req.type, req.label, req.credentials)
-    return ConnectorResponse(id=req.id, type=req.type, label=req.label, config=req.config)
+    deps.vault.store(connector_id, req.type, req.label, req.credentials)
+    return ConnectorResponse(id=connector_id, type=req.type, label=req.label, config=req.config)
 
 
 @router.put("/{connector_id}", response_model=ConnectorResponse)

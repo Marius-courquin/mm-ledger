@@ -1,7 +1,7 @@
 from pydantic import BaseModel, Field
 
 class ConnectorCreate(BaseModel):
-    id: str
+    id: str | None = None  # Auto-generated from label if not provided
     type: str
     label: str
     credentials: dict = Field(default_factory=dict, repr=False)
