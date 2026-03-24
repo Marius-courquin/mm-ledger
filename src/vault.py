@@ -46,7 +46,10 @@ class Vault:
 
     def lock(self) -> None:
         if self._conn:
-            self._conn.close()
+            try:
+                self._conn.close()
+            except Exception:
+                pass
             self._conn = None
 
     def store(self, connector_id: str, connector_type: str, label: str, credentials: dict) -> None:
