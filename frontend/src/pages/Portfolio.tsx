@@ -211,7 +211,7 @@ function AccountCard({ account, currency }: { account: PortfolioAccount; currenc
           </div>
           <div className="flex flex-col items-end gap-0.5">
             <span className="text-[24px] font-bold text-mm-gold tabular-nums">
-              {formatCurrency(account.total_value, currency)}
+              {account.total_invested > 0 ? formatCurrency(account.positions_value > 0 ? account.total_value : account.total_invested, currency) : formatCurrency(account.total_value, currency)}
             </span>
             <div className="flex items-center gap-3 text-[12px]">
               {account.cash > 0 && (
@@ -219,9 +219,16 @@ function AccountCard({ account, currency }: { account: PortfolioAccount; currenc
                   Cash <span className="text-mm-text-secondary tabular-nums">{formatCurrency(account.cash, currency)}</span>
                 </span>
               )}
-              <span className={`font-medium tabular-nums ${account.pnl >= 0 ? 'text-mm-gain' : 'text-red-400'}`}>
-                {account.pnl >= 0 ? '+' : ''}{formatCurrency(account.pnl, currency)} ({account.pnl_pct >= 0 ? '+' : ''}{account.pnl_pct.toFixed(2)}%)
-              </span>
+              {account.total_invested > 0 && (
+                <span className="text-mm-text-muted">
+                  Investi <span className="text-mm-text-secondary tabular-nums">{formatCurrency(account.total_invested, currency)}</span>
+                </span>
+              )}
+              {account.positions_value > 0 && (
+                <span className={`font-medium tabular-nums ${account.pnl >= 0 ? 'text-mm-gain' : 'text-red-400'}`}>
+                  {account.pnl >= 0 ? '+' : ''}{formatCurrency(account.pnl, currency)} ({account.pnl_pct >= 0 ? '+' : ''}{account.pnl_pct.toFixed(2)}%)
+                </span>
+              )}
             </div>
           </div>
         </div>
