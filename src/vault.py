@@ -19,7 +19,7 @@ class Vault:
 
     def setup(self, password: str) -> None:
         self._path.parent.mkdir(parents=True, exist_ok=True)
-        conn = sqlcipher3.connect(str(self._path))
+        conn = sqlcipher3.connect(str(self._path), check_same_thread=False)
         conn.execute(f"PRAGMA key = '{password}'")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS credentials (
@@ -36,7 +36,7 @@ class Vault:
 
     def unlock(self, password: str) -> bool:
         try:
-            conn = sqlcipher3.connect(str(self._path))
+            conn = sqlcipher3.connect(str(self._path), check_same_thread=False)
             conn.execute(f"PRAGMA key = '{password}'")
             conn.execute("SELECT count(*) FROM credentials")
             self._conn = conn
