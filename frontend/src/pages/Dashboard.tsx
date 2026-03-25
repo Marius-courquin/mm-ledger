@@ -88,51 +88,52 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  // Main data fetch (once)
-  useEffect(() => {
-    let cancelled = false;
+  // Fetch all dashboard data
+  const fetchAllData = async () => {
+    try {
+      const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
+      const [accts, port, nw, nwHistory] = await Promise.all([
+        getAccounts(),
+        getPortfolio(),
+        getNetWorth() as Promise<NetWorthData>,
+        getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
+      ]);
 
-    async function fetchData() {
-      setLoading(true);
-      setError('');
-      try {
-        const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
-        const [accts, port, nw, nwHistory] = await Promise.all([
-          getAccounts(),
-          getPortfolio(),
-          getNetWorth() as Promise<NetWorthData>,
-          getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
-        ]);
+      setAccounts(accts);
+      setPortfolio(port);
+      setNetWorth(nw);
+      setNetWorthHistory(nwHistory);
 
-        if (cancelled) return;
-
-        setAccounts(accts);
-        setPortfolio(port);
-        setNetWorth(nw);
-        setNetWorthHistory(nwHistory);
-
-        const balanceMap: Record<string, Balance> = {};
-        const balanceResults = await Promise.allSettled(
-          accts.map((a) => getAccountBalance(a.id))
-        );
-        for (const result of balanceResults) {
-          if (result.status === 'fulfilled') {
-            balanceMap[result.value.account_id] = result.value;
-          }
+      const balanceMap: Record<string, Balance> = {};
+      const balanceResults = await Promise.allSettled(
+        accts.map((a) => getAccountBalance(a.id))
+      );
+      for (const result of balanceResults) {
+        if (result.status === 'fulfilled') {
+          balanceMap[result.value.account_id] = result.value;
         }
-        if (!cancelled) setBalances(balanceMap);
-      } catch (err: unknown) {
-        if (!cancelled) {
-          setError((err as { detail?: string }).detail ?? 'Échec du chargement des données');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
       }
+      setBalances(balanceMap);
+    } catch (err: unknown) {
+      setError((err as { detail?: string }).detail ?? 'Échec du chargement des données');
     }
+  };
 
-    fetchData();
-    return () => { cancelled = true; };
+  // Initial fetch
+  useEffect(() => {
+    setLoading(true);
+    fetchAllData().finally(() => setLoading(false));
   }, []);
+
+  // Auto-refresh: poll every 5s while any worker is connected but portfolio is empty
+  const hasConnectedWorker = connectors.some(c => c.worker?.state === 'connected');
+  const portfolioEmpty = !portfolio || portfolio.accounts.length === 0;
+
+  useEffect(() => {
+    if (!hasConnectedWorker || !portfolioEmpty) return;
+    const interval = setInterval(() => { fetchAllData(); }, 5000);
+    return () => clearInterval(interval);
+  }, [hasConnectedWorker, portfolioEmpty]);
 
   // Cashflow fetch (separate, re-fetches on period/investment toggle change)
   useEffect(() => {

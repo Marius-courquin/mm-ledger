@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Wallet, TrendingUp, Bitcoin, Landmark, Briefcase } from 'lucide-react';
 import { getPortfolio } from '@/api/portfolio';
+import { useApp } from '@/context/AppContext';
 import { formatCurrency } from '@/lib/format';
 import type { Portfolio as PortfolioData, PortfolioAccount, PortfolioCategory, Position } from '@/lib/types';
 
@@ -258,26 +259,34 @@ function AccountCard({ account, currency }: { account: PortfolioAccount; currenc
 // ── Portfolio page ───────────────────────────────────────────────────────────
 
 export function Portfolio() {
+  const { connectors } = useApp();
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
-    let cancelled = false;
-    async function fetchData() {
-      setLoading(true);
-      try {
-        const data = await getPortfolio();
-        if (!cancelled) setPortfolio(data);
-      } catch (err: unknown) {
-        if (!cancelled) setError((err as { detail?: string }).detail ?? 'Impossible de charger le portefeuille');
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
+  const fetchPortfolio = async () => {
+    try {
+      const data = await getPortfolio();
+      setPortfolio(data);
+    } catch (err: unknown) {
+      setError((err as { detail?: string }).detail ?? 'Impossible de charger le portefeuille');
     }
-    fetchData();
-    return () => { cancelled = true; };
+  };
+
+  useEffect(() => {
+    setLoading(true);
+    fetchPortfolio().finally(() => setLoading(false));
   }, []);
+
+  // Auto-refresh while workers connected but portfolio empty
+  const hasConnected = connectors.some(c => c.worker?.state === 'connected');
+  const isEmpty = !portfolio || portfolio.accounts.length === 0;
+
+  useEffect(() => {
+    if (!hasConnected || !isEmpty) return;
+    const interval = setInterval(fetchPortfolio, 5000);
+    return () => clearInterval(interval);
+  }, [hasConnected, isEmpty]);
 
   const totalPositions = useMemo(() => {
     if (!portfolio) return 0;
