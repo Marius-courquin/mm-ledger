@@ -83,6 +83,7 @@ export function Dashboard() {
   const [netWorthHistory, setNetWorthHistory] = useState<NetWorthHistoryPoint[]>([]);
   const [cashflow, setCashflow] = useState<CashflowData | null>(null);
   const [cashflowPeriod, setCashflowPeriod] = useState<string>('1M');
+  const [includeInvestments, setIncludeInvestments] = useState(true);
   const [activePeriod, setActivePeriod] = useState<string>('3M');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -100,7 +101,7 @@ export function Dashboard() {
           getPortfolio(),
           getNetWorth() as Promise<NetWorthData>,
           getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
-          getCashflow(cashflowPeriod) as Promise<CashflowData>,
+          getCashflow(cashflowPeriod, includeInvestments) as Promise<CashflowData>,
         ]);
 
         if (cancelled) return;
@@ -135,7 +136,7 @@ export function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, [cashflowPeriod]);
+  }, [cashflowPeriod, includeInvestments]);
 
   const allPositions = useMemo(() => {
     if (!portfolio) return [];
@@ -260,20 +261,32 @@ export function Dashboard() {
               )}
             </div>
           </div>
-          <div className="flex gap-1">
-            {CASHFLOW_PERIODS.map((p) => (
-              <button
-                key={p}
-                onClick={() => setCashflowPeriod(p)}
-                className={`px-2.5 py-1 text-[11px] font-medium rounded-[6px] transition-colors ${
-                  cashflowPeriod === p
-                    ? 'bg-mm-gold text-mm-bg'
-                    : 'text-mm-text-muted hover:text-mm-text-secondary'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
+          <div className="flex items-center gap-3">
+            <button
+              onClick={() => setIncludeInvestments(v => !v)}
+              className={`px-2.5 py-1 text-[11px] font-medium rounded-[6px] border transition-colors ${
+                includeInvestments
+                  ? 'border-mm-gold text-mm-gold'
+                  : 'border-mm-border text-mm-text-muted'
+              }`}
+            >
+              {includeInvestments ? '📈 Invest. inclus' : '📈 Invest. exclus'}
+            </button>
+            <div className="flex gap-1">
+              {CASHFLOW_PERIODS.map((p) => (
+                <button
+                  key={p}
+                  onClick={() => setCashflowPeriod(p)}
+                  className={`px-2.5 py-1 text-[11px] font-medium rounded-[6px] transition-colors ${
+                    cashflowPeriod === p
+                      ? 'bg-mm-gold text-mm-bg'
+                      : 'text-mm-text-muted hover:text-mm-text-secondary'
+                  }`}
+                >
+                  {p}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
         {cashflow && cashflow.sources.length > 0 && (

@@ -36,6 +36,7 @@ def _get_source_label(connector_id: str) -> str:
 def get_cashflow(
     user: AuthUser = Depends(get_current_user),
     period: str = Query("1M", description="1W, 1M, 3M, 6M, 1Y, Max"),
+    include_investments: bool = Query(True, description="Inclure les opérations d'investissement"),
 ):
     """Get cashflow for a period with transactions grouped by source."""
     if period == "Max":
@@ -64,9 +65,10 @@ def get_cashflow(
             if not isinstance(tx, dict):
                 continue
 
-            # Skip investment operations (not real cashflow)
+            # Optionally skip investment operations
             raw_type = tx.get("raw_type", "")
-            if raw_type in TR_INVESTMENT_TYPES:
+            is_investment = raw_type in TR_INVESTMENT_TYPES
+            if not include_investments and is_investment:
                 continue
 
             tx_date = (tx.get("date", "") or "")[:10]
