@@ -29,7 +29,7 @@ CONNECTOR_TYPES = [
         "supports_2fa": False, "supports_streaming": True,
     },
     {
-        "type": "woob_bank", "label": "Banque (Woob)",
+        "type": "woob_bank", "label": "Banque Populaire",
         "credential_fields": [
             {"name": "login", "type": "text", "required": True},
             {"name": "password", "type": "password", "required": True},
