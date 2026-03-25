@@ -102,7 +102,7 @@ export function ConnectorForm({
     values: Record<string, string>,
     onChange: (name: string, value: string) => void,
   ) {
-    const fieldLabel = field.name.replace(/_/g, ' ');
+    const fieldLabel = field.name.replace(/_/g, ' ').toLowerCase();
 
     // Special: BP region dropdown
     if (isRegionField(field)) {

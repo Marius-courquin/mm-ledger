@@ -47,11 +47,11 @@ function periodToDays(period: string): number | null {
 }
 
 const statusLabels: Record<WorkerState, string> = {
-  connected: 'Connected',
-  connecting: 'Connecting...',
-  waiting_2fa: 'Awaiting 2FA',
-  error: 'Error',
-  disconnected: 'Disconnected',
+  connected: 'Connecté',
+  connecting: 'Connexion...',
+  waiting_2fa: 'En attente 2FA',
+  error: 'Erreur',
+  disconnected: 'Déconnecté',
 };
 
 const txTypeBadge: Record<string, { bg: string; text: string }> = {
@@ -128,7 +128,7 @@ export function AccountDetail() {
         setTransactions(txs);
       } catch (err: unknown) {
         if (!cancelled) {
-          const detail = (err as { detail?: string }).detail ?? 'Failed to load account data';
+          const detail = (err as { detail?: string }).detail ?? 'Échec du chargement des données du compte';
           setError(detail);
         }
       } finally {
@@ -185,7 +185,7 @@ export function AccountDetail() {
       await connectConnector(id);
       refreshConnectors();
     } catch (err: unknown) {
-      setError((err as { detail?: string }).detail ?? 'Failed to connect');
+      setError((err as { detail?: string }).detail ?? 'Échec de la connexion');
     }
   }
 
@@ -195,7 +195,7 @@ export function AccountDetail() {
       await disconnectConnector(id);
       refreshConnectors();
     } catch (err: unknown) {
-      setError((err as { detail?: string }).detail ?? 'Failed to disconnect');
+      setError((err as { detail?: string }).detail ?? 'Échec de la déconnexion');
     }
   }
 
@@ -226,7 +226,7 @@ export function AccountDetail() {
         className="flex items-center gap-1.5 text-sm text-mm-lavender hover:underline w-fit"
       >
         <ArrowLeft size={16} />
-        Back to Accounts
+        Retour aux comptes
       </button>
 
       {/* Header */}
@@ -243,7 +243,7 @@ export function AccountDetail() {
               </span>
             </div>
             <span className="text-[13px] text-mm-text-muted">
-              {statusLabels[workerState]} &middot; {accounts.length} account{accounts.length !== 1 ? 's' : ''}
+              {statusLabels[workerState]} &middot; {accounts.length} compte{accounts.length !== 1 ? 's' : ''}
             </span>
           </div>
         </div>
@@ -251,7 +251,7 @@ export function AccountDetail() {
         <div className="flex items-center gap-2">
           <button className="flex items-center gap-2 border border-mm-border text-mm-text-secondary rounded-[8px] px-4 py-2 text-sm hover:bg-mm-surface-elevated/30 transition-colors">
             <Download size={16} />
-            Export
+            Exporter
           </button>
           {isConnected ? (
             <button
@@ -259,7 +259,7 @@ export function AccountDetail() {
               className="flex items-center gap-2 border border-mm-border text-mm-text-secondary rounded-[8px] px-4 py-2 text-sm hover:bg-mm-surface-elevated/30 transition-colors"
             >
               <Unplug size={16} />
-              Disconnect
+              Déconnecter
             </button>
           ) : (
             <button
@@ -267,7 +267,7 @@ export function AccountDetail() {
               className="flex items-center gap-2 border border-mm-border text-mm-text-secondary rounded-[8px] px-4 py-2 text-sm hover:bg-mm-surface-elevated/30 transition-colors"
             >
               <Plug size={16} />
-              Connect
+              Connecter
             </button>
           )}
         </div>
@@ -278,19 +278,19 @@ export function AccountDetail() {
       {/* 3 Metric Cards */}
       <div className="grid grid-cols-3 gap-4">
         <MetricCard
-          label="Account Balance"
+          label="Solde du compte"
           value={formatCurrency(totalBalance, currency)}
           valueClassName="text-[32px] font-bold text-mm-gold"
-          sub={`${formatPercent(0)} all time`}
+          sub={`${formatPercent(0)} depuis le début`}
           icon={<TrendingUp size={12} className="text-mm-gain" />}
         />
         <MetricCard
-          label="Cash Available"
+          label="Liquidités disponibles"
           value={formatCurrency(totalCash, currency)}
           valueClassName="text-[32px] font-bold text-mm-text"
         />
         <MetricCard
-          label="Positions Value"
+          label="Valeur des positions"
           value={formatCurrency(totalPositionsValue, currency)}
           valueClassName="text-[32px] font-bold text-mm-text"
         />
@@ -307,13 +307,13 @@ export function AccountDetail() {
       {/* Transactions Table */}
       <div className="bg-mm-surface border border-mm-border rounded-[12px] overflow-hidden">
         <div className="flex items-center justify-between px-5 py-4">
-          <h3 className="text-base font-semibold text-mm-text">Recent Transactions</h3>
+          <h3 className="text-base font-semibold text-mm-text">Transactions récentes</h3>
           <span className="text-xs text-mm-text-muted">{transactions.length} transactions</span>
         </div>
 
         {transactions.length === 0 ? (
           <div className="px-5 py-8 text-center text-sm text-mm-text-muted border-t border-mm-border">
-            No transactions found.
+            Aucune transaction trouvée.
           </div>
         ) : (
           <table className="w-full">
@@ -326,10 +326,10 @@ export function AccountDetail() {
                   Type
                 </th>
                 <th className="px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-mm-text-muted">
-                  Label
+                  Libellé
                 </th>
                 <th className="w-[120px] px-3 py-2.5 text-right text-[11px] font-semibold uppercase tracking-wide text-mm-text-muted">
-                  Amount
+                  Montant
                 </th>
                 <th className="w-[100px] px-3 py-2.5 text-left text-[11px] font-semibold uppercase tracking-wide text-mm-text-muted">
                   Instrument

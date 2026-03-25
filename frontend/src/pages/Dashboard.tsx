@@ -34,7 +34,7 @@ function connectorSubtitle(type: string): string {
   switch (type) {
     case 'trade_republic': return 'Trade Republic';
     case 'ibkr': return 'Interactive Brokers';
-    case 'woob_bank': return 'Bank (Woob)';
+    case 'woob_bank': return 'Banque';
     default: return type;
   }
 }

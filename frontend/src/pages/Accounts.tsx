@@ -13,11 +13,11 @@ import { getAccounts } from '@/api/accounts';
 import type { ConnectorTypeInfo, ConnectorType, WorkerState, Account } from '@/lib/types';
 
 const statusConfig: Record<WorkerState, { color: string; label: string }> = {
-  connected: { color: 'bg-green-500', label: 'Connected' },
-  connecting: { color: 'bg-yellow-500', label: 'Connecting' },
-  waiting_2fa: { color: 'bg-yellow-500', label: 'Waiting 2FA' },
-  error: { color: 'bg-red-500', label: 'Error' },
-  disconnected: { color: 'bg-gray-500', label: 'Disconnected' },
+  connected: { color: 'bg-green-500', label: 'Connecté' },
+  connecting: { color: 'bg-yellow-500', label: 'Connexion...' },
+  waiting_2fa: { color: 'bg-yellow-500', label: 'En attente 2FA' },
+  error: { color: 'bg-red-500', label: 'Erreur' },
+  disconnected: { color: 'bg-gray-500', label: 'Déconnecté' },
 };
 
 const connectorIconMap: Record<string, { icon: typeof Landmark; bg: string }> = {
@@ -63,7 +63,7 @@ export function Accounts() {
         setAccountsByConnector(grouped);
       } catch (err: unknown) {
         if (!cancelled) {
-          const detail = (err as { detail?: string }).detail ?? 'Failed to load data';
+          const detail = (err as { detail?: string }).detail ?? 'Échec du chargement des données';
           setError(detail);
         }
       } finally {
@@ -96,7 +96,7 @@ export function Accounts() {
       await connectConnector(id);
       refreshConnectors();
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Failed to connect';
+      const detail = (err as { detail?: string }).detail ?? 'Échec de la connexion';
       setError(detail);
     }
   }
@@ -106,7 +106,7 @@ export function Accounts() {
       await disconnectConnector(id);
       refreshConnectors();
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Failed to disconnect';
+      const detail = (err as { detail?: string }).detail ?? 'Échec de la déconnexion';
       setError(detail);
     }
   }
@@ -124,15 +124,15 @@ export function Accounts() {
       {/* Header */}
       <div className="flex items-start justify-between">
         <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold text-mm-text">Accounts</h1>
-          <p className="text-[13px] text-mm-text-muted">Manage your connected accounts</p>
+          <h1 className="text-2xl font-semibold text-mm-text">Comptes</h1>
+          <p className="text-[13px] text-mm-text-muted">Gérez vos comptes connectés</p>
         </div>
         <button
           onClick={() => setFormOpen(true)}
           className="flex items-center gap-2 border border-mm-border text-mm-text rounded-[8px] px-4 py-2 text-sm hover:bg-mm-surface-elevated/30 transition-colors"
         >
           <Plus size={16} />
-          Add Connector
+          Ajouter un connecteur
         </button>
       </div>
 
@@ -144,7 +144,7 @@ export function Accounts() {
       <div className="grid grid-cols-2 gap-4">
         {connectors.length === 0 && (
           <div className="col-span-2 bg-mm-surface border border-mm-border rounded-[12px] p-8 text-center text-sm text-mm-text-muted">
-            No connectors configured. Click "Add Connector" to get started.
+            Aucun connecteur configuré. Cliquez sur « Ajouter un connecteur » pour commencer.
           </div>
         )}
 
@@ -184,7 +184,7 @@ export function Accounts() {
 
               {/* Middle: account count */}
               <div className="text-xs text-mm-text-muted">
-                {accts.length} account{accts.length !== 1 ? 's' : ''}
+                {accts.length} compte{accts.length !== 1 ? 's' : ''}
               </div>
 
               {/* Bottom: actions */}
@@ -198,7 +198,7 @@ export function Accounts() {
                   role="link"
                   tabIndex={0}
                 >
-                  View Details
+                  Voir les détails
                 </span>
                 {isConnected ? (
                   <button
@@ -209,7 +209,7 @@ export function Accounts() {
                     }}
                   >
                     <Unplug size={14} />
-                    Disconnect
+                    Déconnecter
                   </button>
                 ) : (
                   <button
@@ -220,7 +220,7 @@ export function Accounts() {
                     }}
                   >
                     <Plug size={14} />
-                    Connect
+                    Connecter
                   </button>
                 )}
               </div>

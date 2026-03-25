@@ -117,7 +117,7 @@ export function Settings() {
       }
       refreshConnectors();
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Operation failed';
+      const detail = (err as { detail?: string }).detail ?? 'Opération échouée';
       setConnectorError(detail);
       throw err;
     }
@@ -130,7 +130,7 @@ export function Settings() {
       refreshConnectors();
       setDeleteConfirm(null);
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Failed to delete connector';
+      const detail = (err as { detail?: string }).detail ?? 'Échec de la suppression du connecteur';
       setConnectorError(detail);
     }
   }
@@ -150,23 +150,23 @@ export function Settings() {
     setPasswordSuccess('');
 
     if (newPassword.length < 4) {
-      setPasswordError('New password must be at least 4 characters');
+      setPasswordError('Le nouveau mot de passe doit faire au moins 4 caractères');
       return;
     }
     if (newPassword !== confirmNewPassword) {
-      setPasswordError('New passwords do not match');
+      setPasswordError('Les mots de passe ne correspondent pas');
       return;
     }
 
     setPasswordLoading(true);
     try {
       await changePassword(oldPassword, newPassword);
-      setPasswordSuccess('Password changed successfully');
+      setPasswordSuccess('Mot de passe modifié avec succès');
       setOldPassword('');
       setNewPassword('');
       setConfirmNewPassword('');
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Failed to change password';
+      const detail = (err as { detail?: string }).detail ?? 'Échec de la modification du mot de passe';
       setPasswordError(detail);
     } finally {
       setPasswordLoading(false);
@@ -187,7 +187,7 @@ export function Settings() {
       {/* -- Connectors Section ------------------------------------------------- */}
       <div className="flex flex-col gap-4">
         <div className="flex items-center justify-between">
-          <h2 className="text-lg font-medium text-mm-text">Connectors</h2>
+          <h2 className="text-lg font-medium text-mm-text">Connecteurs</h2>
           <button
             onClick={() => {
               setEditingConnector(undefined);
@@ -196,7 +196,7 @@ export function Settings() {
             className="flex items-center gap-1.5 border border-mm-border text-mm-text rounded-[8px] px-3 py-1.5 text-sm hover:bg-mm-surface-elevated/30 transition-colors"
           >
             <Plus size={14} />
-            Add Connector
+            Ajouter un connecteur
           </button>
         </div>
 
@@ -207,7 +207,7 @@ export function Settings() {
         <div className="bg-mm-surface border border-mm-border rounded-[12px] overflow-hidden">
           {connectors.length === 0 ? (
             <div className="px-5 py-8 text-center text-sm text-mm-text-muted">
-              No connectors configured.
+              Aucun connecteur configuré.
             </div>
           ) : (
             connectors.map((connector) => {
@@ -244,13 +244,13 @@ export function Settings() {
                           onClick={() => handleDelete(connector.id)}
                           className="text-red-400 text-xs h-7 px-2 rounded-[6px] hover:bg-red-400/10 transition-colors"
                         >
-                          Confirm
+                          Confirmer
                         </button>
                         <button
                           onClick={() => setDeleteConfirm(null)}
                           className="text-mm-text-muted text-xs h-7 px-2 rounded-[6px] hover:bg-mm-surface-elevated/30 transition-colors"
                         >
-                          Cancel
+                          Annuler
                         </button>
                       </div>
                     ) : (
@@ -272,7 +272,7 @@ export function Settings() {
 
       {/* -- Vault Section ------------------------------------------------------ */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-mm-text">Vault</h2>
+        <h2 className="text-lg font-medium text-mm-text">Coffre-fort</h2>
 
         <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5 flex flex-col gap-5">
           <button
@@ -280,14 +280,14 @@ export function Settings() {
             className="flex items-center gap-2 border border-mm-border text-mm-text-secondary w-fit rounded-[8px] px-4 py-2 text-sm hover:bg-mm-surface-elevated/30 transition-colors"
           >
             <Lock size={16} />
-            Lock Vault
+            Verrouiller le coffre-fort
           </button>
 
           <div className="border-t border-mm-border pt-5 flex flex-col gap-4">
-            <h3 className="text-sm font-medium text-mm-text">Change Password</h3>
+            <h3 className="text-sm font-medium text-mm-text">Modifier le mot de passe</h3>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-mm-text-secondary">Current password</label>
+              <label className="text-xs font-medium text-mm-text-secondary">Mot de passe actuel</label>
               <input
                 type="password"
                 value={oldPassword}
@@ -296,7 +296,7 @@ export function Settings() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-mm-text-secondary">New password</label>
+              <label className="text-xs font-medium text-mm-text-secondary">Nouveau mot de passe</label>
               <input
                 type="password"
                 value={newPassword}
@@ -305,7 +305,7 @@ export function Settings() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-mm-text-secondary">Confirm new password</label>
+              <label className="text-xs font-medium text-mm-text-secondary">Confirmer le nouveau mot de passe</label>
               <input
                 type="password"
                 value={confirmNewPassword}
@@ -329,10 +329,10 @@ export function Settings() {
               {passwordLoading ? (
                 <span className="flex items-center gap-2">
                   <span className="h-4 w-4 animate-spin rounded-full border-2 border-mm-bg border-t-transparent" />
-                  Changing...
+                  Modification...
                 </span>
               ) : (
-                'Change Password'
+                'Modifier le mot de passe'
               )}
             </button>
           </div>
@@ -341,7 +341,7 @@ export function Settings() {
 
       {/* -- System Section ----------------------------------------------------- */}
       <div className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium text-mm-text">System</h2>
+        <h2 className="text-lg font-medium text-mm-text">Système</h2>
 
         {systemLoading ? (
           <div className="flex items-center justify-center h-24">
@@ -354,34 +354,34 @@ export function Settings() {
               <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <Activity size={16} className="text-mm-gold" />
-                  <h3 className="text-sm font-medium text-mm-text">Health Status</h3>
+                  <h3 className="text-sm font-medium text-mm-text">État du système</h3>
                 </div>
 
                 <div className="grid grid-cols-3 gap-4">
                   <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-mm-text-muted">Status</span>
+                    <span className="text-[11px] text-mm-text-muted">État</span>
                     <span className={`text-sm font-medium ${health.status === 'ok' ? 'text-green-400' : 'text-yellow-400'}`}>
                       {health.status}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-mm-text-muted">Vault</span>
+                    <span className="text-[11px] text-mm-text-muted">Coffre-fort</span>
                     <span className="text-sm font-medium text-mm-text">{health.vault}</span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-mm-text-muted">Scheduler</span>
+                    <span className="text-[11px] text-mm-text-muted">Planificateur</span>
                     <span className={`text-sm font-medium ${health.scheduler === 'running' ? 'text-green-400' : 'text-gray-400'}`}>
                       {health.scheduler}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-mm-text-muted">Database</span>
+                    <span className="text-[11px] text-mm-text-muted">Base de données</span>
                     <span className={`text-sm font-medium ${health.db === 'ok' ? 'text-green-400' : 'text-red-400'}`}>
                       {health.db}
                     </span>
                   </div>
                   <div className="flex flex-col gap-1">
-                    <span className="text-[11px] text-mm-text-muted">Uptime</span>
+                    <span className="text-[11px] text-mm-text-muted">Temps de fonctionnement</span>
                     <span className="text-sm font-medium text-mm-text tabular-nums">
                       {formatUptime(health.uptime_seconds)}
                     </span>
@@ -391,7 +391,7 @@ export function Settings() {
                 {/* Worker states */}
                 {Object.keys(health.workers).length > 0 && (
                   <div className="border-t border-mm-border pt-3 flex flex-col gap-2">
-                    <span className="text-[11px] text-mm-text-muted">Workers</span>
+                    <span className="text-[11px] text-mm-text-muted">Travailleurs</span>
                     {Object.entries(health.workers).map(([name, state]) => (
                       <div key={name} className="flex items-center gap-2">
                         <span className="text-xs text-mm-text-secondary flex-1">{name}</span>
@@ -410,7 +410,7 @@ export function Settings() {
               <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5 flex flex-col gap-3">
                 <div className="flex items-center gap-2">
                   <Clock size={16} className="text-mm-gold" />
-                  <h3 className="text-sm font-medium text-mm-text">Scheduled Jobs</h3>
+                  <h3 className="text-sm font-medium text-mm-text">Tâches planifiées</h3>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -424,7 +424,7 @@ export function Settings() {
                       </div>
                       <div className="flex items-center gap-2 shrink-0">
                         <span className="text-xs text-mm-text-muted">
-                          Next: {formatRelativeTime(job.next_run)}
+                          Prochain : {formatRelativeTime(job.next_run)}
                         </span>
                         {job.last_result && (
                           <span className="flex items-center gap-1">
