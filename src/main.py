@@ -8,10 +8,11 @@ logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(name)s] %(message
 
 from src.api import deps
 from src.api.router import api_router
-from src.config import DATA_DIR
-from src.db.engine import create_engine_and_tables
+from src.config import DATA_DIR, APP_DB, JWT_SECRET_FILE
+from src.db.app_db import create_app_db
+from src.auth import get_or_create_jwt_secret
+from src.api.middleware import set_jwt_secret
 from src.manager import ConnectorManager
-from src.vault import Vault
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -19,8 +20,16 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
-        deps.vault = Vault(data / "vault.db")
-        deps.db_engine = create_engine_and_tables(data / "ledger.db")
+        # Init app.db
+        app_db_path = data / "app.db" if data != DATA_DIR else APP_DB
+        deps.app_db = create_app_db(app_db_path)
+
+        # Init JWT secret
+        jwt_path = data / ".jwt_secret" if data != DATA_DIR else JWT_SECRET_FILE
+        deps.jwt_secret = get_or_create_jwt_secret(jwt_path)
+        set_jwt_secret(deps.jwt_secret)
+
+        # Manager + connectors
         deps.manager = ConnectorManager()
         from src.scheduler import setup_scheduler, shutdown_scheduler
         setup_scheduler()
@@ -33,9 +42,6 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         yield
         shutdown_scheduler()
         deps.manager.stop_all()
-        deps.vault.lock()
-        if deps.db_engine:
-            deps.db_engine.dispose()
 
     app = FastAPI(lifespan=lifespan)
     app.include_router(api_router)
