@@ -5,3 +5,11 @@ dist/
 .DS_Store
 .idea/
 .claude/
+data/
+__pycache__/
+*.pyc
+.venv/
+src/mm_ledger.egg-info/
+frontend/node_modules/
+frontend/dist/
+frontend/tsconfig.tsbuildinfo
