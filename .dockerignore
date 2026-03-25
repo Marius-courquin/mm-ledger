@@ -1,0 +1,13 @@
+.venv
+.git
+data
+node_modules
+frontend/node_modules
+frontend/dist
+__pycache__
+*.pyc
+.env
+src/mm_ledger.egg-info
+docs
+tests
+banque/venv

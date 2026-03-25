@@ -1,19 +1,26 @@
 services:
-  api:
+  app:
     build: .
     ports:
       - "8000:8000"
     volumes:
       - data:/app/data
     restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/status')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
 
   ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:latest
+    profiles: ["ibkr"]
     network_mode: host
     environment:
       TWS_USERID: ${IBKR_USERNAME:-}
       TWS_PASSWORD: ${IBKR_PASSWORD:-}
-      TRADING_MODE: live
+      TRADING_MODE: ${IBKR_TRADING_MODE:-live}
       READ_ONLY_API: "yes"
       TWOFA_TIMEOUT_ACTION: restart
     volumes:
