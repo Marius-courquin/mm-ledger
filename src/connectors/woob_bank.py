@@ -54,12 +54,16 @@ class WoobWorker(ConnectorWorker):
                 accs = list(self._backend.iter_accounts())
                 log.info(f"Connected — {len(accs)} accounts found")
                 self.event_queue.put({"type": "status", "state": "connected"})
-                self.event_queue.put({
-                    "type": "accounts", "data": [
-                        {"id": a.id, "name": a.label, "balance": float(a.balance),
-                         "currency": a.currency_text, "type": str(a.type)} for a in accs
-                    ],
-                })
+                accs_data = [
+                    {"id": a.id, "name": a.label, "balance": float(a.balance),
+                     "currency": a.currency_text, "type": str(a.type)} for a in accs
+                ]
+                self.event_queue.put({"type": "accounts", "data": accs_data})
+                # Also send balances so the dashboard shows them
+                self.event_queue.put({"type": "balances", "data": [
+                    {"account_id": a.id, "amount": float(a.balance),
+                     "currencyId": a.currency_text, "total_value": float(a.balance)} for a in accs
+                ]})
             except SentOTPQuestion as e:
                 log.info(f"2FA SMS required: {e.message}")
                 self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message), "method": "sms"})

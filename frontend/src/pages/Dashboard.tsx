@@ -201,30 +201,30 @@ export function Dashboard() {
       {/* 4 Metric Cards */}
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
-          label="Total Balance"
+          label="Solde total"
           value={formatCurrency(totalBalance, totalCurrency)}
           valueClassName="text-[32px] font-bold text-mm-gold"
-          sub="Across all accounts"
+          sub="Tous les comptes"
           icon={<Wallet size={12} className="text-mm-text-muted" />}
         />
         <MetricCard
-          label="Monthly P&L"
+          label="P&L mensuel"
           value={formatCurrency(monthlyPnl.pnl, totalCurrency)}
           valueClassName="text-[32px] font-bold text-mm-gain"
-          sub={`${formatPercent(monthlyPnl.pnl_pct)} this month`}
+          sub={`${formatPercent(monthlyPnl.pnl_pct)} ce mois`}
           icon={<TrendingUp size={12} className="text-mm-gain" />}
         />
         <MetricCard
-          label="Total Accounts"
+          label="Comptes"
           value={String(accounts.length)}
           valueClassName="text-[32px] font-bold text-mm-text"
-          sub={`${connectedCount} connected`}
+          sub={`${connectedCount} connecté${connectedCount > 1 ? 's' : ''}`}
         />
         <MetricCard
-          label="Best Performer"
-          value={bestPerformer?.symbol ?? '--'}
+          label="Meilleure perf."
+          value={bestPerformer?.name ?? '--'}
           valueClassName="text-[32px] font-bold text-mm-text"
-          sub={bestPerformer ? `${formatPercent(bestPerformer.pnl_pct)} gain` : 'No positions'}
+          sub={bestPerformer ? `${formatPercent(bestPerformer.pnl_pct)}` : 'Aucune position'}
           icon={<Trophy size={12} className="text-mm-gold" />}
         />
       </div>
@@ -237,13 +237,13 @@ export function Dashboard() {
         onPeriodChange={setActivePeriod}
       />
 
-      {/* Connected Accounts */}
+      {/* Comptes connectés */}
       <div className="flex flex-col gap-3">
-        <h2 className="text-base font-semibold text-mm-text">Connected Accounts</h2>
+        <h2 className="text-base font-semibold text-mm-text">Comptes connectés</h2>
         <div className="bg-mm-surface border border-mm-border rounded-[12px] overflow-hidden">
           {connectors.length === 0 && (
             <div className="px-5 py-8 text-center text-sm text-mm-text-muted">
-              No connectors configured yet.
+              Aucun connecteur configuré.
             </div>
           )}
           {connectors.map((connector) => {
