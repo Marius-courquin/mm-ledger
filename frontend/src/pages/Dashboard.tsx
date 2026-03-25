@@ -40,7 +40,7 @@ function connectorSubtitle(type: string): string {
 }
 
 export function Dashboard() {
-  const { connectors } = useApp();
+  const { connectors, user } = useApp();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Record<string, Balance>>({});
@@ -191,7 +191,7 @@ export function Dashboard() {
       {/* Welcome Header */}
       <div className="flex flex-col gap-1">
         <h1 className="text-[28px] font-semibold text-mm-text">
-          {getGreeting()}, Marius
+          {getGreeting()}, {user?.username ?? ''}
         </h1>
         <p className="text-sm text-mm-text-muted">
           {formatDate(new Date().toISOString())}

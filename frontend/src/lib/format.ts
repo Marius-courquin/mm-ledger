@@ -21,7 +21,7 @@ export function formatPercent(value: number): string {
 
 export function formatDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('fr-FR', {
     weekday: 'long',
     year: 'numeric',
     month: 'long',
@@ -31,7 +31,7 @@ export function formatDate(dateStr: string): string {
 
 export function formatShortDate(dateStr: string): string {
   const date = new Date(dateStr);
-  return new Intl.DateTimeFormat('en-US', {
+  return new Intl.DateTimeFormat('fr-FR', {
     month: 'short',
     day: 'numeric',
   }).format(date);
