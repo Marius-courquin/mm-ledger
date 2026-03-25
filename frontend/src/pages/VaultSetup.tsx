@@ -27,7 +27,7 @@ export function VaultSetup() {
       setVaultState('unlocked');
       navigate('/', { replace: true });
     } catch (err: unknown) {
-      const detail = (err as { detail?: string }).detail ?? 'Failed to create vault';
+      const detail = (err as { detail?: string }).detail ?? 'Impossible de créer le coffre-fort';
       setError(detail);
     } finally {
       setLoading(false);
@@ -37,57 +37,51 @@ export function VaultSetup() {
   return (
     <div className="flex h-screen items-center justify-center bg-mm-bg">
       <div className="w-full max-w-sm flex flex-col items-center gap-8">
-        {/* Logo */}
         <div className="flex items-center gap-2">
           <Landmark size={28} className="text-mm-gold" />
           <span className="text-2xl font-bold text-mm-gold">mm-ledger</span>
         </div>
 
-        {/* Card */}
         <div className="w-full bg-mm-surface border border-mm-border rounded-[12px] p-6 flex flex-col gap-5">
           <div className="flex flex-col gap-1 text-center">
-            <h1 className="text-xl font-semibold text-mm-text">Create your vault</h1>
+            <h1 className="text-xl font-semibold text-mm-text">Créer votre coffre-fort</h1>
             <p className="text-sm text-mm-text-muted">
-              Set a master password to encrypt your credentials
+              Ce mot de passe chiffre vos identifiants bancaires
             </p>
           </div>
 
           <div className="flex flex-col gap-4">
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-mm-text-secondary">Password</label>
+              <label className="text-xs font-medium text-mm-text-secondary">Mot de passe</label>
               <input
                 type="password"
-                placeholder="Master password"
+                placeholder="Mot de passe coffre-fort"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSubmit();
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                 className={`bg-mm-surface-elevated border rounded-[8px] px-3 py-2.5 text-sm text-mm-text placeholder:text-mm-text-muted outline-none transition-colors ${
                   passwordTooShort ? 'border-red-400 focus:border-red-400' : 'border-mm-border focus:border-mm-gold'
                 }`}
               />
               {passwordTooShort && (
-                <span className="text-xs text-red-400">Minimum 4 characters</span>
+                <span className="text-xs text-red-400">4 caractères minimum</span>
               )}
             </div>
 
             <div className="flex flex-col gap-1.5">
-              <label className="text-xs font-medium text-mm-text-secondary">Confirm password</label>
+              <label className="text-xs font-medium text-mm-text-secondary">Confirmer le mot de passe</label>
               <input
                 type="password"
-                placeholder="Repeat password"
+                placeholder="Répétez le mot de passe"
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') handleSubmit();
-                }}
+                onKeyDown={(e) => { if (e.key === 'Enter') handleSubmit(); }}
                 className={`bg-mm-surface-elevated border rounded-[8px] px-3 py-2.5 text-sm text-mm-text placeholder:text-mm-text-muted outline-none transition-colors ${
                   mismatch ? 'border-red-400 focus:border-red-400' : 'border-mm-border focus:border-mm-gold'
                 }`}
               />
               {mismatch && (
-                <span className="text-xs text-red-400">Passwords do not match</span>
+                <span className="text-xs text-red-400">Les mots de passe ne correspondent pas</span>
               )}
             </div>
           </div>
@@ -104,10 +98,10 @@ export function VaultSetup() {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-mm-bg border-t-transparent" />
-                Creating...
+                Création...
               </span>
             ) : (
-              'Create Vault'
+              'Créer le coffre-fort'
             )}
           </button>
         </div>

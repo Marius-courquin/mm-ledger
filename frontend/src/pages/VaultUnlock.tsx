@@ -24,11 +24,11 @@ export function VaultUnlock() {
     } catch (err: unknown) {
       const apiErr = err as { status?: number; detail?: string };
       if (apiErr.status === 401) {
-        setError('Wrong password. Please try again.');
+        setError('Mot de passe incorrect.');
       } else if (apiErr.status === 429) {
-        setError('Too many attempts. Please wait a moment before retrying.');
+        setError('Trop de tentatives. Patientez un instant.');
       } else {
-        setError(apiErr.detail ?? 'Failed to unlock vault');
+        setError(apiErr.detail ?? 'Impossible de déverrouiller le coffre-fort');
       }
     } finally {
       setLoading(false);
@@ -47,17 +47,17 @@ export function VaultUnlock() {
         {/* Card */}
         <div className="w-full bg-mm-surface border border-mm-border rounded-[12px] p-6 flex flex-col gap-5">
           <div className="flex flex-col gap-1 text-center">
-            <h1 className="text-xl font-semibold text-mm-text">Welcome back</h1>
+            <h1 className="text-xl font-semibold text-mm-text">Bon retour</h1>
             <p className="text-sm text-mm-text-muted">
-              Enter your master password to continue
+              Entrez votre mot de passe coffre-fort
             </p>
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-mm-text-secondary">Password</label>
+            <label className="text-xs font-medium text-mm-text-secondary">Mot de passe</label>
             <input
               type="password"
-              placeholder="Master password"
+              placeholder="Mot de passe coffre-fort"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               onKeyDown={(e) => {
@@ -80,10 +80,10 @@ export function VaultUnlock() {
             {loading ? (
               <span className="flex items-center justify-center gap-2">
                 <span className="h-4 w-4 animate-spin rounded-full border-2 border-mm-bg border-t-transparent" />
-                Unlocking...
+                Déverrouillage...
               </span>
             ) : (
-              'Unlock'
+              'Déverrouiller'
             )}
           </button>
         </div>
