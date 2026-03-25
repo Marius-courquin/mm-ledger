@@ -4,12 +4,14 @@ import { getVaultStatus } from '@/api/vault';
 
 type VaultState = 'loading' | 'uninitialized' | 'locked' | 'unlocked';
 
-export function useVault() {
+export function useVault(enabled = true) {
   const [vaultState, setVaultState] = useState<VaultState>('loading');
   const navigate = useNavigate();
   const location = useLocation();
 
   useEffect(() => {
+    if (!enabled) return;
+
     let cancelled = false;
 
     async function checkStatus() {
@@ -30,10 +32,11 @@ export function useVault() {
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [enabled]);
 
   // Redirect based on vault state
   useEffect(() => {
+    if (!enabled) return;
     if (vaultState === 'loading') return;
 
     const path = location.pathname;
@@ -45,7 +48,7 @@ export function useVault() {
     } else if (vaultState === 'unlocked' && (path === '/setup' || path === '/unlock')) {
       navigate('/', { replace: true });
     }
-  }, [vaultState, location.pathname, navigate]);
+  }, [enabled, vaultState, location.pathname, navigate]);
 
   // Listen for vault-locked events dispatched by the API client on 423 responses
   useEffect(() => {

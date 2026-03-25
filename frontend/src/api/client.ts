@@ -44,6 +44,7 @@ async function get<T>(path: string, params?: Record<string, string | number | bo
   const res = await fetch(buildURL(path, params), {
     method: 'GET',
     headers: { 'Accept': 'application/json' },
+    credentials: 'same-origin',
   });
   return handleResponse<T>(res);
 }
@@ -55,6 +56,7 @@ async function post<T>(path: string, body?: unknown): Promise<T> {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
+    credentials: 'same-origin',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   return handleResponse<T>(res);
@@ -67,6 +69,7 @@ async function put<T>(path: string, body?: unknown): Promise<T> {
       'Content-Type': 'application/json',
       'Accept': 'application/json',
     },
+    credentials: 'same-origin',
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   return handleResponse<T>(res);
@@ -76,6 +79,7 @@ async function del(path: string): Promise<void> {
   const res = await fetch(buildURL(path), {
     method: 'DELETE',
     headers: { 'Accept': 'application/json' },
+    credentials: 'same-origin',
   });
   await handleResponse<void>(res);
 }

@@ -15,7 +15,7 @@ export function useSSE(enabled: boolean, handlers: SSEHandlers) {
   useEffect(() => {
     if (!enabled) return;
 
-    const es = new EventSource('/api/events');
+    const es = new EventSource('/api/events', { withCredentials: true });
 
     es.addEventListener('worker_status', (e: MessageEvent) => {
       const data = JSON.parse(e.data);

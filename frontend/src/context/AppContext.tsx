@@ -12,6 +12,14 @@ type TwoFARequest = {
   method: 'sms' | 'app';
 } | null;
 
+type AuthState = 'loading' | 'no_admin' | 'logged_out' | 'logged_in';
+
+interface AuthUser {
+  id: string;
+  username: string;
+  role: 'admin' | 'user';
+}
+
 interface AppContextType {
   vaultState: VaultState;
   setVaultState: (state: VaultState) => void;
@@ -20,12 +28,20 @@ interface AppContextType {
   refreshConnectors: () => void;
   twoFARequest: TwoFARequest;
   setTwoFARequest: (req: TwoFARequest) => void;
+  authState: AuthState;
+  setAuthState: (state: AuthState) => void;
+  user: AuthUser | null;
+  setUser: (user: AuthUser | null) => void;
 }
 
 const AppContext = createContext<AppContextType | null>(null);
 
 export function AppProvider({ children }: { children: React.ReactNode }) {
-  const { vaultState, setVaultState, isLoading } = useVault();
+  const [authState, setAuthState] = useState<AuthState>('loading');
+  const [user, setUser] = useState<AuthUser | null>(null);
+
+  const loggedIn = authState === 'logged_in';
+  const { vaultState, setVaultState, isLoading } = useVault(loggedIn);
   const vaultUnlocked = vaultState === 'unlocked';
   const { connectors, updateConnectorState, refreshConnectors } = useConnectors(vaultUnlocked);
   const [twoFARequest, setTwoFARequest] = useState<TwoFARequest>(null);
@@ -56,7 +72,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     onWorkerStatus: handleWorkerStatus,
   });
 
-  if (isLoading) {
+  if (isLoading && loggedIn) {
     return (
       <div className="flex h-screen items-center justify-center bg-mm-bg">
         <div className="h-8 w-8 animate-spin rounded-full border-2 border-mm-gold border-t-transparent" />
@@ -74,6 +90,10 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         refreshConnectors,
         twoFARequest,
         setTwoFARequest,
+        authState,
+        setAuthState,
+        user,
+        setUser,
       }}
     >
       {children}

@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Routes, Route, Navigate } from "react-router-dom";
 import { AppProvider, useApp } from "@/context/AppContext";
 import { AppLayout } from "@/layouts/AppLayout";
@@ -8,17 +9,73 @@ import { Portfolio } from "@/pages/Portfolio";
 import { Accounts } from "@/pages/Accounts";
 import { AccountDetail } from "@/pages/AccountDetail";
 import { Settings } from "@/pages/Settings";
+import { Login } from "@/pages/Login";
+import { AdminSetup } from "@/pages/AdminSetup";
+import { AdminUsers } from "@/pages/AdminUsers";
 import { TwoFADialog } from "@/components/TwoFADialog";
 import { submit2FA } from "@/api/connectors";
+import { getAuthStatus } from "@/api/auth";
 
 function AppRoutes() {
-  const { vaultState, twoFARequest, setTwoFARequest, refreshConnectors } =
-    useApp();
+  const {
+    authState, setAuthState, setUser,
+    vaultState,
+    twoFARequest, setTwoFARequest, refreshConnectors,
+  } = useApp();
 
-  if (vaultState === "loading") {
+  // Check auth status on mount
+  useEffect(() => {
+    async function check() {
+      try {
+        const data = await getAuthStatus();
+        setAuthState(data.state);
+        setUser(data.user ?? null);
+      } catch {
+        setAuthState('logged_out');
+      }
+    }
+    check();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Auth loading spinner
+  if (authState === 'loading') {
     return (
       <div className="flex h-screen items-center justify-center bg-mm-bg">
-        <div className="text-mm-text-muted text-sm">Loading...</div>
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-mm-gold border-t-transparent" />
+      </div>
+    );
+  }
+
+  // No admin yet — first launch
+  if (authState === 'no_admin') {
+    return (
+      <AdminSetup
+        onSetup={() => {
+          setAuthState('logged_in');
+        }}
+      />
+    );
+  }
+
+  // Not logged in
+  if (authState === 'logged_out') {
+    return (
+      <Login
+        onLogin={async () => {
+          const data = await getAuthStatus();
+          setAuthState(data.state);
+          setUser(data.user ?? null);
+        }}
+      />
+    );
+  }
+
+  // Logged in — check vault state
+  if (vaultState === 'loading') {
+    return (
+      <div className="flex h-screen items-center justify-center bg-mm-bg">
+        <div className="h-8 w-8 animate-spin rounded-full border-2 border-mm-gold border-t-transparent" />
       </div>
     );
   }
@@ -46,6 +103,7 @@ function AppRoutes() {
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
               <Route path="/settings" element={<Settings />} />
+              <Route path="/admin/users" element={<AdminUsers />} />
             </Route>
             <Route path="/setup" element={<Navigate to="/" replace />} />
             <Route path="/unlock" element={<Navigate to="/" replace />} />
