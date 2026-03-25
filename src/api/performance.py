@@ -1,9 +1,10 @@
 from datetime import date, timedelta
 
-from fastapi import APIRouter, Query, Response
+from fastapi import APIRouter, Query, Response, Depends
 from sqlalchemy import select, func
 
 from src.api import deps
+from src.api.middleware import get_current_user, AuthUser
 from src.db.models import performance
 
 router = APIRouter(prefix="/api/performance", tags=["performance"])
@@ -16,6 +17,7 @@ def list_performance(
     limit: int = 100, offset: int = 0,
     frm: str = Query(None, alias="from"),
     to: str = None,
+    user: AuthUser = Depends(get_current_user),
 ):
     frm = frm or (date.today() - timedelta(days=30)).isoformat()
     to = to or date.today().isoformat()
@@ -27,7 +29,7 @@ def list_performance(
     stmt = select(performance).where(*filters).order_by(performance.c.period_start).limit(limit).offset(offset)
     count_stmt = select(func.count()).select_from(performance).where(*filters)
 
-    with deps.db_engine.connect() as conn:
+    with deps.get_ledger(user.id).connect() as conn:
         total = conn.execute(count_stmt).scalar()
         rows = conn.execute(stmt).fetchall()
 

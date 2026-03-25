@@ -106,3 +106,21 @@ class ConnectorManager:
         """Drain events and return all cached live data."""
         self.collect_events()
         return self.live_data
+
+    def stop_user_workers(self, user_id: str):
+        """Stop all workers belonging to a user."""
+        for cid in list(self._workers):
+            if cid.startswith(f"{user_id}:"):
+                self.stop(cid)
+
+    def get_user_live_data(self, user_id: str) -> dict:
+        """Return only live data for the given user's workers."""
+        self.collect_events()
+        prefix = f"{user_id}:"
+        return {k[len(prefix):]: v for k, v in self.live_data.items() if k.startswith(prefix)}
+
+    def get_user_health(self, user_id: str) -> dict[str, str]:
+        """Return health of user's workers only."""
+        self.collect_events()
+        prefix = f"{user_id}:"
+        return {k[len(prefix):]: h.state for k, h in self._workers.items() if k.startswith(prefix)}

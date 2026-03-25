@@ -1,7 +1,8 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 
 from src.api import deps
+from src.api.middleware import get_current_user, AuthUser
 from src.db.models import accounts, balance_snapshots
 from src.schemas.account import AccountResponse
 
@@ -9,13 +10,13 @@ router = APIRouter(prefix="/api/accounts", tags=["accounts"])
 
 
 @router.get("", response_model=list[AccountResponse])
-def list_accounts(connector_id: str | None = None):
+def list_accounts(connector_id: str | None = None, user: AuthUser = Depends(get_current_user)):
     # First: accounts from DB
     result = []
     stmt = select(accounts)
     if connector_id:
         stmt = stmt.where(accounts.c.connector_id == connector_id)
-    with deps.db_engine.connect() as conn:
+    with deps.get_ledger(user.id).connect() as conn:
         rows = conn.execute(stmt).fetchall()
     seen_ids = set()
     for r in rows:
@@ -23,7 +24,7 @@ def list_accounts(connector_id: str | None = None):
         seen_ids.add(r.id)
 
     # Second: live accounts from workers (not yet in DB)
-    all_data = deps.manager.get_all_live_data()
+    all_data = deps.manager.get_user_live_data(user.id)
     for cid, data in all_data.items():
         if connector_id and cid != connector_id:
             continue
@@ -44,9 +45,9 @@ def list_accounts(connector_id: str | None = None):
 
 
 @router.get("/{account_id}/balance")
-def get_balance(account_id: str):
+def get_balance(account_id: str, user: AuthUser = Depends(get_current_user)):
     # Try live data first
-    all_data = deps.manager.get_all_live_data()
+    all_data = deps.manager.get_user_live_data(user.id)
     for cid, data in all_data.items():
         for b in data.get("balances", []):
             if isinstance(b, dict):
@@ -63,7 +64,7 @@ def get_balance(account_id: str):
     stmt = select(balance_snapshots).where(
         balance_snapshots.c.account_id == account_id
     ).order_by(balance_snapshots.c.date.desc()).limit(1)
-    with deps.db_engine.connect() as conn:
+    with deps.get_ledger(user.id).connect() as conn:
         row = conn.execute(stmt).fetchone()
     if not row:
         return {"account_id": account_id, "cash": None, "positions_value": None, "total_value": None}

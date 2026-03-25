@@ -34,28 +34,48 @@ async def daily_snapshot():
     today = date.today().isoformat()
     health = deps.manager.health_check()
 
-    for cid, state in health.items():
+    # Group workers by user_id — composite keys are "user_id:connector_id"
+    user_workers: dict[str, list[str]] = {}
+    for composite_key, state in health.items():
         if state != "connected":
             continue
+        if ":" in composite_key:
+            user_id, connector_id = composite_key.split(":", 1)
+        else:
+            # Legacy key without user prefix
+            user_id = None
+            connector_id = composite_key
+        user_workers.setdefault(user_id, []).append(composite_key)
+
+    for user_id, worker_keys in user_workers.items():
         try:
-            deps.manager.send_command(cid, {"type": "fetch_balances"})
-            await asyncio.sleep(2)
-            events = deps.manager.collect_events()
-            for event in events:
-                if event.get("type") == "balances":
-                    for bal in event.get("data", []):
-                        with deps.db_engine.begin() as conn:
-                            conn.execute(
-                                insert(balance_snapshots).prefix_with("OR REPLACE").values(
-                                    account_id=bal["account_id"],
-                                    date=today,
-                                    cash=bal.get("cash"),
-                                    positions_value=bal.get("positions_value"),
-                                    total_value=bal.get("total_value"),
-                                    currency=bal.get("currency", "EUR"),
-                                    positions=bal.get("positions"),
-                                )
-                            )
+            if user_id:
+                engine = deps.get_ledger(user_id)
+            else:
+                # Fallback for legacy workers without user prefix
+                continue
+            for composite_key in worker_keys:
+                try:
+                    deps.manager.send_command(composite_key, {"type": "fetch_balances"})
+                    await asyncio.sleep(2)
+                    events = deps.manager.collect_events()
+                    for event in events:
+                        if event.get("type") == "balances":
+                            for bal in event.get("data", []):
+                                with engine.begin() as conn:
+                                    conn.execute(
+                                        insert(balance_snapshots).prefix_with("OR REPLACE").values(
+                                            account_id=bal["account_id"],
+                                            date=today,
+                                            cash=bal.get("cash"),
+                                            positions_value=bal.get("positions_value"),
+                                            total_value=bal.get("total_value"),
+                                            currency=bal.get("currency", "EUR"),
+                                            positions=bal.get("positions"),
+                                        )
+                                    )
+                except Exception as e:
+                    _last_results["daily_snapshot"] = f"error: {e}"
             _last_results["daily_snapshot"] = "ok"
         except Exception as e:
             _last_results["daily_snapshot"] = f"error: {e}"

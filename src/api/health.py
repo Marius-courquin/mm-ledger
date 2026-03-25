@@ -1,8 +1,9 @@
 import time
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from src.api import deps
+from src.api.middleware import get_current_user, AuthUser
 from src.scheduler import get_job_status, get_scheduler
 
 router = APIRouter(tags=["system"])
@@ -11,17 +12,18 @@ _start_time = time.time()
 
 
 @router.get("/api/health")
-def health():
-    workers = deps.manager.health_check() if deps.manager else {}
+def health(user: AuthUser = Depends(get_current_user)):
+    workers = deps.manager.get_user_health(user.id) if deps.manager else {}
+    vault = deps.get_vault(user.id)
     db_ok = "ok"
     try:
-        with deps.db_engine.connect() as conn:
+        with deps.get_ledger(user.id).connect() as conn:
             conn.exec_driver_sql("SELECT 1")
     except Exception:
         db_ok = "error"
     return {
         "status": "ok" if db_ok == "ok" else "degraded",
-        "vault": deps.vault.status if deps.vault else "uninitialized",
+        "vault": vault.status if vault else "uninitialized",
         "scheduler": "running" if (s := get_scheduler()) and s.running else "stopped",
         "workers": workers,
         "db": db_ok,
@@ -35,10 +37,10 @@ def scheduler_status():
 
 
 @router.get("/api/debug/live-data")
-def debug_live_data():
+def debug_live_data(user: AuthUser = Depends(get_current_user)):
     """Debug: show raw live data cache from workers."""
     import json
-    data = deps.manager.get_all_live_data()
+    data = deps.manager.get_user_live_data(user.id)
     # Truncate large values for readability
     result = {}
     for cid, d in data.items():

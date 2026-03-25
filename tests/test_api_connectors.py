@@ -1,6 +1,12 @@
+def _setup_auth(client):
+    """Create admin user and get authenticated session."""
+    r = client.post("/api/auth/setup", json={"username": "admin", "password": "testpass123"})
+    assert r.status_code == 201
+
+
 def _setup_vault(client):
+    _setup_auth(client)
     client.post("/api/vault/setup", json={"password": "test"})
-    client.post("/api/vault/unlock", json={"password": "test"})
 
 
 def test_create_connector(client):
@@ -14,6 +20,7 @@ def test_create_connector(client):
 
 
 def test_create_connector_vault_locked(client):
+    _setup_auth(client)
     r = client.post("/api/connectors", json={
         "id": "tr_1", "type": "trade_republic", "label": "TR",
         "credentials": {}, "config": {}

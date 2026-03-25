@@ -1,6 +1,7 @@
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from src.api import deps
+from src.api.middleware import get_current_user, AuthUser
 from src.schemas.portfolio import PortfolioResponse, PositionResponse
 
 router = APIRouter(prefix="/api/portfolio", tags=["portfolio"])
@@ -41,9 +42,9 @@ def _parse_position(p: dict, cat_type: str, connector_id: str) -> PositionRespon
 
 
 @router.get("")
-def get_portfolio(connector_id: str | None = None):
+def get_portfolio(connector_id: str | None = None, user: AuthUser = Depends(get_current_user)):
     """Returns portfolio grouped by account, each account grouped by category."""
-    all_data = deps.manager.get_all_live_data()
+    all_data = deps.manager.get_user_live_data(user.id)
 
     accounts = []
     grand_total_value = 0.0
@@ -173,5 +174,5 @@ def get_portfolio(connector_id: str | None = None):
 
 
 @router.get("/{connector_id}")
-def get_portfolio_by_connector(connector_id: str):
-    return get_portfolio(connector_id=connector_id)
+def get_portfolio_by_connector(connector_id: str, user: AuthUser = Depends(get_current_user)):
+    return get_portfolio(connector_id=connector_id, user=user)

@@ -7,6 +7,7 @@ from src.config import USERS_DIR
 app_db = None
 jwt_secret: str = ""
 manager: ConnectorManager | None = None
+users_dir: Path = USERS_DIR
 
 # Legacy single-user compat (used by existing routes until Task 4 scopes them)
 vault = None
@@ -18,14 +19,14 @@ _user_engines: dict[str, object] = {}
 
 def get_vault(user_id: str) -> Vault:
     if user_id not in _user_vaults:
-        path = USERS_DIR / user_id / "vault.db"
+        path = users_dir / user_id / "vault.db"
         _user_vaults[user_id] = Vault(path)
     return _user_vaults[user_id]
 
 
 def get_ledger(user_id: str):
     if user_id not in _user_engines:
-        path = USERS_DIR / user_id / "ledger.db"
+        path = users_dir / user_id / "ledger.db"
         _user_engines[user_id] = create_engine_and_tables(path)
     return _user_engines[user_id]
 

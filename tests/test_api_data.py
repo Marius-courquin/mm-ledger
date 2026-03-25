@@ -1,12 +1,21 @@
 from sqlalchemy import insert
 from src.db.models import connectors, accounts, balance_snapshots, transactions, performance
 from src.api import deps
+from src.auth import decode_jwt
 
 
 def _seed(client):
+    r = client.post("/api/auth/setup", json={"username": "admin", "password": "testpass123"})
+    assert r.status_code == 201
     client.post("/api/vault/setup", json={"password": "test"})
-    client.post("/api/vault/unlock", json={"password": "test"})
-    with deps.db_engine.begin() as conn:
+
+    # Extract user_id from the auth cookie
+    token = r.cookies.get("mm_session")
+    payload = decode_jwt(token, deps.jwt_secret)
+    user_id = payload["user_id"]
+
+    engine = deps.get_ledger(user_id)
+    with engine.begin() as conn:
         conn.execute(insert(connectors).values(id="tr_1", type="trade_republic", label="TR"))
         conn.execute(insert(accounts).values(id="tr_CTO", connector_id="tr_1", name="CTO", type="cto"))
         conn.execute(insert(balance_snapshots).values(

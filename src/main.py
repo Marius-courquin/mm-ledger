@@ -29,6 +29,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.jwt_secret = get_or_create_jwt_secret(jwt_path)
         set_jwt_secret(deps.jwt_secret)
 
+        # Set users_dir for per-user data
+        deps.users_dir = data / "users"
+
         # Manager + connectors
         deps.manager = ConnectorManager()
         from src.scheduler import setup_scheduler, shutdown_scheduler
