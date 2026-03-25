@@ -49,16 +49,32 @@ def get_balance(account_id: str, user: AuthUser = Depends(get_current_user)):
     # Try live data first
     all_data = deps.manager.get_user_live_data(user.id)
     for cid, data in all_data.items():
+        # Check balances (TR format: accountNumber, BP format: account_id)
         for b in data.get("balances", []):
             if isinstance(b, dict):
-                return {
-                    "account_id": account_id,
-                    "cash": float(b.get("amount", 0)),
-                    "positions_value": None,
-                    "total_value": float(b.get("amount", 0)),
-                    "currency": b.get("currencyId", "EUR"),
-                    "updated_at": None,
-                }
+                b_id = b.get("account_id") or b.get("accountNumber") or ""
+                if b_id == account_id:
+                    return {
+                        "account_id": account_id,
+                        "cash": float(b.get("amount", 0) or b.get("total_value", 0)),
+                        "positions_value": None,
+                        "total_value": float(b.get("amount", 0) or b.get("total_value", 0)),
+                        "currency": b.get("currencyId") or b.get("currency", "EUR"),
+                        "updated_at": None,
+                    }
+        # Check accounts data (BP sends balance in accounts event)
+        for acc in data.get("accounts", []):
+            if isinstance(acc, dict):
+                a_id = acc.get("id") or ""
+                if a_id == account_id and "balance" in acc:
+                    return {
+                        "account_id": account_id,
+                        "cash": float(acc["balance"]),
+                        "positions_value": None,
+                        "total_value": float(acc["balance"]),
+                        "currency": acc.get("currency", "EUR"),
+                        "updated_at": None,
+                    }
 
     # Fallback to DB
     stmt = select(balance_snapshots).where(

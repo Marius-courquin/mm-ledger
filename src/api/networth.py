@@ -19,25 +19,40 @@ def get_net_worth(user: AuthUser = Depends(get_current_user)):
     investments_invested = 0.0
 
     for cid, data in all_data.items():
-        # Balances (from BP woob or TR cash)
+        has_positions = bool(data.get("positions"))
+        seen_account_ids = set()
+
+        # Balances event (TR cash format: [{accountNumber, amount}], BP format: [{account_id, amount}])
         for b in data.get("balances", []):
             if not isinstance(b, dict):
                 continue
             amount = float(b.get("amount", 0) or b.get("total_value", 0))
-            name = b.get("label") or b.get("name") or cid
-            # Determine if bank or investment based on source data
-            product_type = b.get("productType", "")
-            if product_type in ("DEFAULT", "TAX_WRAPPER", "PEA", ""):
-                # Check if this connector has positions — if yes, it's an investment cash
-                has_positions = bool(data.get("positions"))
-                if has_positions:
-                    # This is investment cash (TR/IBKR cash)
-                    investment_accounts.append({"name": f"Espèces {name}", "value": amount, "source": cid, "type": "investment"})
-                    investments_total += amount
-                else:
-                    # This is a bank account (BP)
-                    bank_accounts.append({"name": name, "value": amount, "source": cid, "type": "bank"})
-                    bank_total += amount
+            name = b.get("label") or b.get("name") or b.get("account_id") or cid
+            acc_id = b.get("account_id") or b.get("accountNumber") or ""
+            seen_account_ids.add(acc_id)
+
+            if has_positions:
+                investment_accounts.append({"name": f"Espèces {name}", "value": amount, "source": cid, "type": "investment"})
+                investments_total += amount
+            else:
+                bank_accounts.append({"name": name, "value": amount, "source": cid, "type": "bank"})
+                bank_total += amount
+
+        # Also check accounts data for balances (BP sends balance in accounts event too)
+        for acc in data.get("accounts", []):
+            if not isinstance(acc, dict):
+                continue
+            acc_id = acc.get("id", "")
+            if acc_id in seen_account_ids:
+                continue  # Already counted from balances event
+            balance = acc.get("balance")
+            if balance is None:
+                continue
+            amount = float(balance)
+            name = acc.get("name") or acc.get("label") or acc_id
+            if has_positions:
+                investment_accounts.append({"name": name, "value": amount, "source": cid, "type": "investment"})
+                investments_total += amount
             else:
                 bank_accounts.append({"name": name, "value": amount, "source": cid, "type": "bank"})
                 bank_total += amount
