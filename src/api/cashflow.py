@@ -8,6 +8,29 @@ router = APIRouter(prefix="/api/cashflow", tags=["cashflow"])
 
 PERIOD_DAYS = {"1W": 7, "1M": 30, "3M": 90, "6M": 180, "1Y": 365}
 
+# TR event types that are NOT cashflow (investment operations)
+TR_INVESTMENT_TYPES = {
+    "TRADE_INVOICE", "SAVINGS_PLAN_EXECUTED", "SAVINGS_PLAN_INVOICE",
+    "ORDER_EXECUTED", "ssp_corporate_action_invoice_cash",
+    "STOCK_PERK_REFUNDED", "benefits_spare_change_execution",
+}
+
+# Human-readable source labels
+SOURCE_LABELS = {
+    "trade_republic": "Trade Republic",
+    "banque_populaire": "Banque Populaire",
+    "bp": "Banque Populaire",
+}
+
+
+def _get_source_label(connector_id: str) -> str:
+    """Get a readable label from the connector ID."""
+    cid_lower = connector_id.lower()
+    for key, label in SOURCE_LABELS.items():
+        if key in cid_lower:
+            return label
+    return connector_id
+
 
 @router.get("")
 def get_cashflow(
@@ -40,11 +63,20 @@ def get_cashflow(
         for tx in txs:
             if not isinstance(tx, dict):
                 continue
+
+            # Skip investment operations (not real cashflow)
+            raw_type = tx.get("raw_type", "")
+            if raw_type in TR_INVESTMENT_TYPES:
+                continue
+
             tx_date = (tx.get("date", "") or "")[:10]
             if tx_date < from_date or tx_date > to_date:
                 continue
 
             amount = float(tx.get("amount", 0))
+            if amount == 0:
+                continue
+
             label = tx.get("label", "")
             tx_type = "income" if amount > 0 else "expense"
 
@@ -64,7 +96,7 @@ def get_cashflow(
             filtered_txs.sort(key=lambda t: t["date"], reverse=True)
             sources.append({
                 "source": cid,
-                "label": cid,
+                "label": _get_source_label(cid),
                 "delta": source_income + source_expenses,
                 "income": source_income,
                 "expenses": source_expenses,
