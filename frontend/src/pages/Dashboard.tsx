@@ -56,8 +56,10 @@ interface NetWorthHistoryPoint {
   investments_total: number;
 }
 
+const CASHFLOW_PERIODS = ['1W', '1M', '3M', '6M', '1Y', 'Max'] as const;
+
 interface CashflowData {
-  month: string;
+  period: string;
   delta: number;
   income: number;
   expenses: number;
@@ -80,6 +82,7 @@ export function Dashboard() {
   const [netWorth, setNetWorth] = useState<NetWorthData | null>(null);
   const [netWorthHistory, setNetWorthHistory] = useState<NetWorthHistoryPoint[]>([]);
   const [cashflow, setCashflow] = useState<CashflowData | null>(null);
+  const [cashflowPeriod, setCashflowPeriod] = useState<string>('1M');
   const [activePeriod, setActivePeriod] = useState<string>('3M');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -92,14 +95,12 @@ export function Dashboard() {
       setError('');
       try {
         const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
-        const currentMonth = new Date().toISOString().slice(0, 7);
-
         const [accts, port, nw, nwHistory, cf] = await Promise.all([
           getAccounts(),
           getPortfolio(),
           getNetWorth() as Promise<NetWorthData>,
           getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
-          getCashflow(currentMonth) as Promise<CashflowData>,
+          getCashflow(cashflowPeriod) as Promise<CashflowData>,
         ]);
 
         if (cancelled) return;
@@ -134,7 +135,7 @@ export function Dashboard() {
 
     fetchData();
     return () => { cancelled = true; };
-  }, []);
+  }, [cashflowPeriod]);
 
   const allPositions = useMemo(() => {
     if (!portfolio) return [];
@@ -209,8 +210,8 @@ export function Dashboard() {
         </p>
       </div>
 
-      {/* 4 cartes de métriques */}
-      <div className="grid grid-cols-4 gap-4">
+      {/* 3 cartes de métriques */}
+      <div className="grid grid-cols-3 gap-4">
         <MetricCard
           label="Capital NET"
           value={formatCurrency(netWorth?.total ?? 0, currency)}
@@ -226,23 +227,71 @@ export function Dashboard() {
           icon={<TrendingUp size={12} className={netWorth && netWorth.investments_pnl >= 0 ? 'text-mm-gain' : 'text-mm-loss'} />}
         />
         <MetricCard
-          label="Cashflow du mois"
-          value={cashflow ? formatCurrency(cashflow.delta, currency) : '--'}
-          valueClassName={`text-[32px] font-bold ${cashflowPositive ? 'text-mm-gain' : 'text-mm-loss'}`}
-          sub={cashflow
-            ? `↑ ${formatCurrency(cashflow.income, currency)} ↓ ${formatCurrency(cashflow.expenses, currency)}`
-            : 'Aucune donnée'}
-          icon={cashflowPositive
-            ? <ArrowUpRight size={12} className="text-mm-gain" />
-            : <ArrowDownLeft size={12} className="text-mm-loss" />}
-        />
-        <MetricCard
           label="Meilleure perf."
           value={bestPerformer?.name ?? '--'}
           valueClassName="text-[32px] font-bold text-mm-text"
           sub={bestPerformer ? `${formatPercent(bestPerformer.pnl_pct)}` : 'Aucune position'}
           icon={<Trophy size={12} className="text-mm-gold" />}
         />
+      </div>
+
+      {/* Cashflow avec sélecteur de période */}
+      <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-base font-semibold text-mm-text">Cashflow</h2>
+            <div className="flex items-center gap-2">
+              <span className={`text-[28px] font-bold tabular-nums ${cashflowPositive ? 'text-mm-gain' : 'text-red-400'}`}>
+                {cashflow ? `${cashflow.delta >= 0 ? '+' : ''}${formatCurrency(cashflow.delta, currency)}` : '--'}
+              </span>
+            </div>
+            <div className="flex items-center gap-3 text-[12px] text-mm-text-muted">
+              {cashflow && (
+                <>
+                  <span className="flex items-center gap-1">
+                    <ArrowUpRight size={10} className="text-mm-gain" />
+                    <span className="text-mm-gain tabular-nums">{formatCurrency(cashflow.income, currency)}</span>
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <ArrowDownLeft size={10} className="text-red-400" />
+                    <span className="text-red-400 tabular-nums">{formatCurrency(Math.abs(cashflow.expenses), currency)}</span>
+                  </span>
+                </>
+              )}
+            </div>
+          </div>
+          <div className="flex gap-1">
+            {CASHFLOW_PERIODS.map((p) => (
+              <button
+                key={p}
+                onClick={() => setCashflowPeriod(p)}
+                className={`px-2.5 py-1 text-[11px] font-medium rounded-[6px] transition-colors ${
+                  cashflowPeriod === p
+                    ? 'bg-mm-gold text-mm-bg'
+                    : 'text-mm-text-muted hover:text-mm-text-secondary'
+                }`}
+              >
+                {p}
+              </button>
+            ))}
+          </div>
+        </div>
+        {cashflow && cashflow.sources.length > 0 && (
+          <div className="flex flex-col gap-2 border-t border-mm-border pt-3">
+            {cashflow.sources.map((src) => (
+              <div key={src.source} className="flex items-center justify-between text-[13px]">
+                <span className="text-mm-text-secondary">{src.label}</span>
+                <div className="flex items-center gap-3">
+                  <span className="text-mm-gain tabular-nums text-[12px]">↑ {formatCurrency(src.income, currency)}</span>
+                  <span className="text-red-400 tabular-nums text-[12px]">↓ {formatCurrency(Math.abs(src.expenses), currency)}</span>
+                  <span className={`font-medium tabular-nums ${src.delta >= 0 ? 'text-mm-gain' : 'text-red-400'}`}>
+                    {src.delta >= 0 ? '+' : ''}{formatCurrency(src.delta, currency)}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Courbe de performance */}
