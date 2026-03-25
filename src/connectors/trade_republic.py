@@ -231,58 +231,56 @@ class TradeRepublicWorker(ConnectorWorker):
                     if not portfolio or not isinstance(portfolio, dict):
                         continue
 
-                    # Fetch ticker prices for each position
+                    # Collect all positions that need a ticker price
+                    ticker_requests = []  # [(mid, ticker_id, pos_ref)]
                     for cat in portfolio.get("categories", []):
                         cat_type = cat.get("categoryType", "")
                         for pos in cat.get("positions", []):
-                            isin = pos.get("isin", "")
-                            # Crypto uses bare ISIN, stocks use ISIN.LSX
-                            # Crypto = bare ISIN, private equity = skip, stocks = ISIN.LSX
-                            if cat_type == "privateMarkets":
-                                continue  # No ticker available
-
-                            # Build ticker ID: stocks = ISIN.LSX, crypto = try multiple formats
-                            if cat_type == "cryptos":
-                                # Try: bare ISIN, then shortName-based formats
-                                crypto_ids = [isin, f"{isin}.CXTR"]
-                                ticker = None
-                                for tid in crypto_ids:
-                                    try:
-                                        ticker = self._ws_sub(ws, {
-                                            "type": "ticker",
-                                            "token": self._session_token,
-                                            "id": tid,
-                                        })
-                                        if ticker and not ticker.get("errors"):
-                                            log.info(f"Crypto ticker {tid}: OK")
-                                            break
-                                        ticker = None
-                                    except Exception:
-                                        continue
-                            else:
-                                ticker_id = f"{isin}.LSX"
-                                ticker = self._ws_sub(ws, {
-                                    "type": "ticker",
-                                    "token": self._session_token,
-                                    "id": ticker_id,
-                                })
-
-                            try:
-                                log.info(f"Ticker {isin}: {json.dumps(ticker)[:150] if ticker else 'None'}")
-                                if ticker and isinstance(ticker, dict):
-                                    price = (ticker.get("last", {}).get("price")
-                                             or ticker.get("bid", {}).get("price")
-                                             or ticker.get("ask", {}).get("price"))
-                                    if price:
-                                        pos["currentPrice"] = float(price)
-                                        log.info(f"  -> price={price}")
-                            except Exception as e:
-                                log.warning(f"Ticker {ticker_id} failed: {e}")
-
-                            # Tag position with account info
                             pos["accountId"] = sec_acc_no
                             pos["accountLabel"] = account_label
                             pos["productType"] = product_type
+
+                            isin = pos.get("isin", "")
+                            if cat_type == "privateMarkets" or not isin:
+                                continue
+                            ticker_id = isin if cat_type == "cryptos" else f"{isin}.LSX"
+                            self._ws_msg_id += 1
+                            mid = self._ws_msg_id
+                            ticker_requests.append((mid, ticker_id, pos))
+
+                    # Subscribe to ALL tickers in parallel
+                    for mid, ticker_id, _ in ticker_requests:
+                        ws.send(f"sub {mid} {json.dumps({'type': 'ticker', 'token': self._session_token, 'id': ticker_id})}")
+
+                    # Collect all responses (they come back in any order)
+                    received = {}
+                    for _ in range(len(ticker_requests) * 3):  # read enough messages
+                        if len(received) >= len(ticker_requests):
+                            break
+                        try:
+                            raw = ws.recv(timeout=5)
+                            parts = raw.split(" ", 2)
+                            if len(parts) >= 2:
+                                resp_mid = int(parts[0])
+                                if resp_mid not in received:
+                                    received[resp_mid] = self._parse_ws_response(raw)
+                        except Exception:
+                            break
+
+                    # Unsub all
+                    for mid, _, _ in ticker_requests:
+                        ws.send(f"unsub {mid}")
+
+                    # Assign prices to positions
+                    for mid, ticker_id, pos in ticker_requests:
+                        ticker = received.get(mid)
+                        if ticker and isinstance(ticker, dict) and not ticker.get("errors"):
+                            price = (ticker.get("last", {}).get("price")
+                                     or ticker.get("bid", {}).get("price")
+                                     or ticker.get("ask", {}).get("price"))
+                            if price:
+                                pos["currentPrice"] = float(price)
+                    log.info(f"Fetched {len(received)}/{len(ticker_requests)} ticker prices in batch")
 
                     all_accounts_data.append({
                         "secAccNo": sec_acc_no,
