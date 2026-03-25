@@ -13,6 +13,45 @@ services:
       retries: 3
       start_period: 10s
 
+  # ── VPN (WireGuard + Web UI) ───────────────────────────────────────────────
+  wg-easy:
+    image: ghcr.io/wg-easy/wg-easy:latest
+    profiles: ["vpn"]
+    ports:
+      - "51820:51820/udp"   # WireGuard
+      - "51821:51821/tcp"   # Web UI (admin)
+    volumes:
+      - wireguard:/etc/wireguard
+    environment:
+      # REQUIRED: ton IP publique ou ton domaine DynDNS
+      WG_HOST: ${WG_HOST:-mon-rasp.duckdns.org}
+      # Password pour l'UI d'admin WireGuard
+      PASSWORD_HASH: ${WG_PASSWORD_HASH:-}
+      # Réseau interne VPN
+      WG_DEFAULT_ADDRESS: 10.8.0.x
+      WG_DEFAULT_DNS: 1.1.1.1
+      # Autoriser l'accès à mm-ledger via le VPN
+      WG_ALLOWED_IPS: 10.8.0.0/24
+      WG_POST_UP: iptables -A FORWARD -i %i -j ACCEPT; iptables -A FORWARD -o %i -j ACCEPT; iptables -t nat -A POSTROUTING -o eth0 -j MASQUERADE
+      WG_POST_DOWN: iptables -D FORWARD -i %i -j ACCEPT; iptables -D FORWARD -o %i -j ACCEPT; iptables -t nat -D POSTROUTING -o eth0 -j MASQUERADE
+    cap_add:
+      - NET_ADMIN
+      - SYS_MODULE
+    sysctls:
+      - net.ipv4.ip_forward=1
+      - net.ipv4.conf.all.src_valid_mark=1
+    restart: unless-stopped
+
+  # ── DynDNS (met à jour ton IP publique automatiquement) ─────────────────────
+  duckdns:
+    image: lscr.io/linuxserver/duckdns:latest
+    profiles: ["vpn"]
+    environment:
+      SUBDOMAINS: ${DUCKDNS_SUBDOMAIN:-mm-ledger}
+      TOKEN: ${DUCKDNS_TOKEN:-}
+    restart: unless-stopped
+
+  # ── IB Gateway (optionnel) ─────────────────────────────────────────────────
   ib-gateway:
     image: ghcr.io/gnzsnz/ib-gateway:latest
     profiles: ["ibkr"]
@@ -29,4 +68,5 @@ services:
 
 volumes:
   data:
+  wireguard:
   ib-gateway-data:
