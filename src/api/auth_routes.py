@@ -1,10 +1,27 @@
+import shutil
+import logging
+
 from fastapi import APIRouter, HTTPException, Response, Request
 
 from src.api import deps
 from src.auth import hash_password, verify_password, create_jwt, get_or_create_jwt_secret, LoginRateLimiter
 from src.api.middleware import set_jwt_secret, get_current_user
 from src.db.app_db import create_user, get_user_by_username, count_admins
-from src.config import JWT_SECRET_FILE
+from src.config import JWT_SECRET_FILE, VAULT_DB, LEDGER_DB, USERS_DIR
+
+
+def _migrate_legacy_data(user_id: str):
+    """Move old single-user data/vault.db and data/ledger.db to data/users/{user_id}/"""
+    log = logging.getLogger("migration")
+    user_dir = USERS_DIR / user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+
+    if VAULT_DB.exists():
+        shutil.move(str(VAULT_DB), str(user_dir / "vault.db"))
+        log.info(f"Migrated legacy vault.db to {user_dir}")
+    if LEDGER_DB.exists():
+        shutil.move(str(LEDGER_DB), str(user_dir / "ledger.db"))
+        log.info(f"Migrated legacy ledger.db to {user_dir}")
 
 router = APIRouter(prefix="/api/auth", tags=["auth"])
 _rate_limiter = LoginRateLimiter()
@@ -42,6 +59,7 @@ def auth_setup(request_body: dict, response: Response):
     deps.jwt_secret = get_or_create_jwt_secret(JWT_SECRET_FILE)
     set_jwt_secret(deps.jwt_secret)
     user = create_user(deps.app_db, username, hash_password(password), "admin")
+    _migrate_legacy_data(user["id"])
     token = create_jwt({"user_id": user["id"], "username": user["username"], "role": "admin"}, deps.jwt_secret)
     response.set_cookie("mm_session", token, httponly=True, samesite="lax", max_age=86400)
     return {"status": "created", "user": {"id": user["id"], "username": user["username"], "role": "admin"}}
