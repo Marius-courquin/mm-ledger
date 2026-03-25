@@ -1,15 +1,15 @@
 import { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, Wallet, BarChart3, Trophy } from 'lucide-react';
+import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
 import { PerformanceChart } from '@/components/PerformanceChart';
 import { AccountRow } from '@/components/AccountRow';
 import { useApp } from '@/context/AppContext';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
 import { getPortfolio } from '@/api/portfolio';
-import { getSnapshots } from '@/api/snapshots';
-import { getPerformance } from '@/api/performance';
+import { getNetWorth, getNetWorthHistory } from '@/api/networth';
+import { getCashflow } from '@/api/cashflow';
 import { formatCurrency, formatPercent, formatDate, formatShortDate, getGreeting } from '@/lib/format';
-import type { Account, Balance, Portfolio, Snapshot, Performance } from '@/lib/types';
+import type { Account, Balance, Portfolio } from '@/lib/types';
 
 const PERIODS = ['1W', '1M', '3M', '1Y', 'All'] as const;
 
@@ -39,14 +39,47 @@ function connectorSubtitle(type: string): string {
   }
 }
 
+interface NetWorthData {
+  total: number;
+  currency: string;
+  bank_total: number;
+  investments_total: number;
+  investments_pnl: number;
+  investments_pnl_pct: number;
+  breakdown: { name: string; value: number; source: string; type: string }[];
+}
+
+interface NetWorthHistoryPoint {
+  date: string;
+  total: number;
+  bank_total: number;
+  investments_total: number;
+}
+
+interface CashflowData {
+  month: string;
+  delta: number;
+  income: number;
+  expenses: number;
+  sources: {
+    source: string;
+    label: string;
+    delta: number;
+    income: number;
+    expenses: number;
+    transactions: { date: string; label: string; amount: number; type: string }[];
+  }[];
+}
+
 export function Dashboard() {
   const { connectors, user } = useApp();
 
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Record<string, Balance>>({});
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
-  const [perfData, setPerfData] = useState<Performance[]>([]);
+  const [netWorth, setNetWorth] = useState<NetWorthData | null>(null);
+  const [netWorthHistory, setNetWorthHistory] = useState<NetWorthHistoryPoint[]>([]);
+  const [cashflow, setCashflow] = useState<CashflowData | null>(null);
   const [activePeriod, setActivePeriod] = useState<string>('3M');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -58,19 +91,24 @@ export function Dashboard() {
       setLoading(true);
       setError('');
       try {
-        const [accts, port, snaps, perf] = await Promise.all([
+        const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
+        const currentMonth = new Date().toISOString().slice(0, 7);
+
+        const [accts, port, nw, nwHistory, cf] = await Promise.all([
           getAccounts(),
           getPortfolio(),
-          getSnapshots({ from: new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0] }),
-          getPerformance(),
+          getNetWorth() as Promise<NetWorthData>,
+          getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
+          getCashflow(currentMonth) as Promise<CashflowData>,
         ]);
 
         if (cancelled) return;
 
         setAccounts(accts);
         setPortfolio(port);
-        setSnapshots(snaps);
-        setPerfData(perf);
+        setNetWorth(nw);
+        setNetWorthHistory(nwHistory);
+        setCashflow(cf);
 
         const balanceMap: Record<string, Balance> = {};
         const balanceResults = await Promise.allSettled(
@@ -86,7 +124,7 @@ export function Dashboard() {
         }
       } catch (err: unknown) {
         if (!cancelled) {
-          const detail = (err as { detail?: string }).detail ?? 'Failed to load dashboard data';
+          const detail = (err as { detail?: string }).detail ?? 'Échec du chargement des données';
           setError(detail);
         }
       } finally {
@@ -98,7 +136,6 @@ export function Dashboard() {
     return () => { cancelled = true; };
   }, []);
 
-  // Compute metrics
   const allPositions = useMemo(() => {
     if (!portfolio) return [];
     return portfolio.accounts.flatMap(acc =>
@@ -106,28 +143,9 @@ export function Dashboard() {
     );
   }, [portfolio]);
 
-  const totalBalance = useMemo(() => {
-    return portfolio?.total_value ?? Object.values(balances).reduce((sum, b) => sum + b.total_value, 0);
-  }, [portfolio, balances]);
-
-  const totalCurrency = useMemo(() => {
-    const currencies = Object.values(balances).map((b) => b.currency);
-    return currencies[0] ?? 'EUR';
-  }, [balances]);
-
-  const monthlyPnl = useMemo(() => {
-    if (perfData.length === 0) return { pnl: 0, pnl_pct: 0 };
-    const totals = perfData.reduce(
-      (acc, p) => ({ pnl: acc.pnl + p.pnl, invested: acc.invested + p.total_invested }),
-      { pnl: 0, invested: 0 }
-    );
-    const pct = totals.invested > 0 ? (totals.pnl / totals.invested) * 100 : 0;
-    return { pnl: totals.pnl, pnl_pct: pct };
-  }, [perfData]);
-
-  const connectedCount = useMemo(() => {
-    return connectors.filter((c) => c.worker?.state === 'connected').length;
-  }, [connectors]);
+  const currency = useMemo(() => {
+    return netWorth?.currency ?? Object.values(balances)[0]?.currency ?? 'EUR';
+  }, [netWorth, balances]);
 
   const bestPerformer = useMemo(() => {
     if (allPositions.length === 0) return null;
@@ -136,28 +154,19 @@ export function Dashboard() {
     );
   }, [allPositions]);
 
-  // Chart data filtered by period
+  // Chart data from net worth history, filtered by period
   const chartData = useMemo(() => {
     const days = periodToDays(activePeriod);
     const cutoff = days ? Date.now() - days * 86400000 : 0;
 
-    // Aggregate snapshots by date
-    const dateMap = new Map<string, number>();
-    for (const snap of snapshots) {
-      const snapTime = new Date(snap.date).getTime();
-      if (snapTime >= cutoff) {
-        const dateKey = snap.date.split('T')[0] ?? snap.date;
-        dateMap.set(dateKey, (dateMap.get(dateKey) ?? 0) + snap.total_value);
-      }
-    }
-
-    return Array.from(dateMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({
-        date: formatShortDate(date),
-        value: Math.round(value * 100) / 100,
+    return netWorthHistory
+      .filter((pt) => new Date(pt.date).getTime() >= cutoff)
+      .sort((a, b) => a.date.localeCompare(b.date))
+      .map((pt) => ({
+        date: formatShortDate(pt.date),
+        value: Math.round(pt.total * 100) / 100,
       }));
-  }, [snapshots, activePeriod]);
+  }, [netWorthHistory, activePeriod]);
 
   // Group accounts by connector
   const connectorAccounts = useMemo(() => {
@@ -186,9 +195,11 @@ export function Dashboard() {
     );
   }
 
+  const cashflowPositive = (cashflow?.delta ?? 0) >= 0;
+
   return (
     <div className="flex flex-col gap-8">
-      {/* Welcome Header */}
+      {/* En-tête de bienvenue */}
       <div className="flex flex-col gap-1">
         <h1 className="text-[28px] font-semibold text-mm-text">
           {getGreeting()}, {user?.username ?? ''}
@@ -198,27 +209,32 @@ export function Dashboard() {
         </p>
       </div>
 
-      {/* 4 Metric Cards */}
+      {/* 4 cartes de métriques */}
       <div className="grid grid-cols-4 gap-4">
         <MetricCard
-          label="Solde total"
-          value={formatCurrency(totalBalance, totalCurrency)}
+          label="Capital NET"
+          value={formatCurrency(netWorth?.total ?? 0, currency)}
           valueClassName="text-[32px] font-bold text-mm-gold"
-          sub="Tous les comptes"
+          sub={`Banque: ${formatCurrency(netWorth?.bank_total ?? 0, currency)} · Invest.: ${formatCurrency(netWorth?.investments_total ?? 0, currency)}`}
           icon={<Wallet size={12} className="text-mm-text-muted" />}
         />
         <MetricCard
-          label="P&L mensuel"
-          value={formatCurrency(monthlyPnl.pnl, totalCurrency)}
-          valueClassName="text-[32px] font-bold text-mm-gain"
-          sub={`${formatPercent(monthlyPnl.pnl_pct)} ce mois`}
-          icon={<TrendingUp size={12} className="text-mm-gain" />}
+          label="Investissements"
+          value={formatCurrency(netWorth?.investments_total ?? 0, currency)}
+          valueClassName="text-[32px] font-bold text-mm-text"
+          sub={`P&L: ${formatCurrency(netWorth?.investments_pnl ?? 0, currency)} (${formatPercent(netWorth?.investments_pnl_pct ?? 0)})`}
+          icon={<TrendingUp size={12} className={netWorth && netWorth.investments_pnl >= 0 ? 'text-mm-gain' : 'text-mm-loss'} />}
         />
         <MetricCard
-          label="Comptes"
-          value={String(accounts.length)}
-          valueClassName="text-[32px] font-bold text-mm-text"
-          sub={`${connectedCount} connecté${connectedCount > 1 ? 's' : ''}`}
+          label="Cashflow du mois"
+          value={cashflow ? formatCurrency(cashflow.delta, currency) : '--'}
+          valueClassName={`text-[32px] font-bold ${cashflowPositive ? 'text-mm-gain' : 'text-mm-loss'}`}
+          sub={cashflow
+            ? `↑ ${formatCurrency(cashflow.income, currency)} ↓ ${formatCurrency(cashflow.expenses, currency)}`
+            : 'Aucune donnée'}
+          icon={cashflowPositive
+            ? <ArrowUpRight size={12} className="text-mm-gain" />
+            : <ArrowDownLeft size={12} className="text-mm-loss" />}
         />
         <MetricCard
           label="Meilleure perf."
@@ -229,7 +245,7 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Performance Chart */}
+      {/* Courbe de performance */}
       <PerformanceChart
         data={chartData}
         periods={[...PERIODS]}
@@ -261,7 +277,7 @@ export function Dashboard() {
                   key={connector.id}
                   name={connector.label}
                   subtitle={connectorSubtitle(connector.type)}
-                  balance={formatCurrency(connectorBalance, totalCurrency)}
+                  balance={formatCurrency(connectorBalance, currency)}
                   perf={formatPercent(0)}
                   iconBg={iconInfo.bg}
                   icon={<IconComponent size={16} className="text-mm-text" />}
