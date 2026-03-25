@@ -72,8 +72,9 @@ read -p "Appuie sur Entrée quand c'est fait..."
 
 # ── 5. Lancer ─────────────────────────────────────────────────────────────────
 echo ""
-echo ">> Construction et lancement de mm-ledger + VPN..."
-docker compose --profile vpn up -d --build
+echo ">> Pull et lancement de mm-ledger + VPN..."
+docker compose --profile vpn pull
+docker compose --profile vpn up -d
 
 echo ""
 echo "================================================"
@@ -91,4 +92,11 @@ echo "     sur ton téléphone"
 echo ""
 echo "  Une fois connecté au VPN, accède à mm-ledger"
 echo "  sur http://10.8.0.1:8000"
+echo ""
+echo "  SSH (via VPN uniquement) :"
+echo "    ssh $(whoami)@10.8.0.1"
+echo ""
+echo "  Auto-deploy : Watchtower vérifie toutes les"
+echo "  5 min si une nouvelle image est disponible."
+echo "  Push sur GitHub → image buildée → Pi mis à jour."
 echo "================================================"
