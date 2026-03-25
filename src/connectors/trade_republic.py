@@ -389,9 +389,15 @@ class TradeRepublicWorker(ConnectorWorker):
         self._ws_msg_id += 1
         mid = self._ws_msg_id
         ws.send(f"sub {mid} {json.dumps(payload)}")
-        raw = ws.recv(timeout=15)
+        # Read responses until we get one matching our message ID
+        # (skip stale unsub acks or updates from previous subscriptions)
+        for _ in range(10):  # max 10 attempts to find our response
+            raw = ws.recv(timeout=15)
+            # Response format: "{mid} A {json}" or "{mid} E {json}"
+            parts = raw.split(" ", 2)
+            if parts and parts[0] == str(mid):
+                break
         ws.send(f"unsub {mid}")
-        # Don't wait for unsub ack — TR doesn't always send one and it adds 5s per call
         return self._parse_ws_response(raw)
 
     def _parse_ws_response(self, raw: str):
