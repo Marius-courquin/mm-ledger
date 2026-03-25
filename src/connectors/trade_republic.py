@@ -301,6 +301,39 @@ class TradeRepublicWorker(ConnectorWorker):
                 )
                 log.info(f"Auto-fetch done: {len(all_accounts_data)} accounts, {total_positions} positions with prices")
 
+                # After positions, fetch transactions
+                try:
+                    all_txs = []
+                    after = None
+                    while True:
+                        payload = {"type": "timelineTransactions", "token": self._session_token}
+                        if after:
+                            payload["after"] = after
+                        data = self._ws_sub(ws, payload)
+                        if not data or not data.get("items"):
+                            break
+                        all_txs.extend(data["items"])
+                        after = data.get("cursors", {}).get("after")
+                        if not after:
+                            break
+                    if all_txs:
+                        # Normalize TR transactions to our format
+                        normalized = []
+                        for tx in all_txs:
+                            amount_data = tx.get("amount", {})
+                            amount = float(amount_data.get("value", 0)) if isinstance(amount_data, dict) else 0
+                            normalized.append({
+                                "date": tx.get("timestamp", ""),
+                                "label": tx.get("title", ""),
+                                "amount": amount,
+                                "type": "income" if amount > 0 else "expense",
+                                "raw_type": tx.get("eventType", ""),
+                            })
+                        self.event_queue.put({"type": "transactions", "data": normalized})
+                        log.info(f"Fetched {len(normalized)} transactions")
+                except Exception as e:
+                    log.warning(f"Transaction fetch failed: {e}")
+
         except Exception as e:
             log.error(f"Auto-fetch error: {e}")
 

@@ -2,7 +2,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import insert
 
 from src.api import deps
-from src.db.models import balance_snapshots
+from src.db.models import balance_snapshots, net_worth_snapshots
 
 _scheduler: AsyncIOScheduler | None = None
 _last_results: dict[str, str] = {}
@@ -79,6 +79,63 @@ async def daily_snapshot():
             _last_results["daily_snapshot"] = "ok"
         except Exception as e:
             _last_results["daily_snapshot"] = f"error: {e}"
+
+    # Net worth snapshot per user
+    for user_id, worker_keys in user_workers.items():
+        if not user_id:
+            continue
+        try:
+            user_live = deps.manager.get_user_live_data(user_id)
+            bank_total = 0.0
+            investments_total = 0.0
+            breakdown = []
+
+            for cid, data in user_live.items():
+                for b in data.get("balances", []):
+                    if not isinstance(b, dict):
+                        continue
+                    amount = float(b.get("amount", 0) or b.get("total_value", 0))
+                    name = b.get("label") or b.get("name") or cid
+                    has_positions = bool(data.get("positions"))
+                    if has_positions:
+                        investments_total += amount
+                        breakdown.append({"name": f"Espèces {name}", "value": amount, "type": "investment"})
+                    else:
+                        bank_total += amount
+                        breakdown.append({"name": name, "value": amount, "type": "bank"})
+
+                raw_positions = data.get("positions", [])
+                if isinstance(raw_positions, list):
+                    for acc_data in raw_positions:
+                        if not isinstance(acc_data, dict):
+                            continue
+                        acc_label = acc_data.get("label", cid)
+                        acc_value = 0.0
+                        for cat in acc_data.get("categories", []):
+                            for pos in cat.get("positions", []):
+                                cur_raw = pos.get("currentPrice") or pos.get("current_price")
+                                cur = float(cur_raw) if cur_raw else 0
+                                qty = float(pos.get("netSize", 0) or pos.get("quantity", 0))
+                                if cur > 0:
+                                    acc_value += qty * cur
+                        if acc_value > 0:
+                            investments_total += acc_value
+                            breakdown.append({"name": acc_label, "value": acc_value, "type": "investment"})
+
+            total = bank_total + investments_total
+            engine = deps.get_ledger(user_id)
+            with engine.begin() as conn:
+                conn.execute(
+                    insert(net_worth_snapshots).prefix_with("OR REPLACE").values(
+                        date=today,
+                        total=total,
+                        bank_total=bank_total,
+                        investments_total=investments_total,
+                        breakdown=breakdown,
+                    )
+                )
+        except Exception as e:
+            _last_results["daily_snapshot"] = f"net_worth error ({user_id}): {e}"
 
 
 def setup_scheduler():

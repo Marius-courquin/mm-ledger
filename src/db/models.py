@@ -70,6 +70,16 @@ performance = Table(
     UniqueConstraint("connector_id", "period_start"),
 )
 
+net_worth_snapshots = Table(
+    "net_worth_snapshots", metadata,
+    Column("date", Text, primary_key=True),
+    Column("total", Real),
+    Column("bank_total", Real),
+    Column("investments_total", Real),
+    Column("breakdown", JSON),
+    Column("created_at", Text, server_default="(datetime('now'))"),
+)
+
 Index("idx_snapshots_account_date", balance_snapshots.c.account_id, balance_snapshots.c.date)
 Index("idx_transactions_account_date", transactions.c.account_id, transactions.c.date)
 Index("idx_performance_connector_period", performance.c.connector_id, performance.c.period_start)

@@ -64,6 +64,14 @@ class WoobWorker(ConnectorWorker):
                     {"account_id": a.id, "amount": float(a.balance),
                      "currencyId": a.currency_text, "total_value": float(a.balance)} for a in accs
                 ]})
+                # After sending balances, fetch transactions
+                try:
+                    txs = self.fetch_transactions()
+                    if txs:
+                        self.event_queue.put({"type": "transactions", "data": txs})
+                        log.info(f"Fetched {len(txs)} transactions")
+                except Exception as e:
+                    log.warning(f"Transaction fetch failed: {e}")
             except SentOTPQuestion as e:
                 log.info(f"2FA SMS required: {e.message}")
                 self.event_queue.put({"type": "status", "state": "waiting_2fa", "detail": str(e.message), "method": "sms"})
