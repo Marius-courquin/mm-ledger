@@ -16,6 +16,7 @@ dependencies = [
     "woob",
     "bcrypt",
     "python-jose",
+    "PyJWT[crypto]",
     "chompjs",
     "pytesseract",
     "Pillow",
