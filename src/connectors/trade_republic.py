@@ -330,7 +330,9 @@ class TradeRepublicWorker(ConnectorWorker):
                                 "raw_type": tx.get("eventType", ""),
                             })
                         self.event_queue.put({"type": "transactions", "data": normalized})
-                        log.info(f"Fetched {len(normalized)} transactions")
+                        # Log unique event types for debugging
+                        event_types = set(t.get("raw_type", "") for t in normalized if t.get("raw_type"))
+                        log.info(f"Fetched {len(normalized)} transactions, types: {event_types}")
                 except Exception as e:
                     log.warning(f"Transaction fetch failed: {e}")
 

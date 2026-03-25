@@ -88,6 +88,7 @@ export function Dashboard() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Main data fetch (once)
   useEffect(() => {
     let cancelled = false;
 
@@ -96,12 +97,11 @@ export function Dashboard() {
       setError('');
       try {
         const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
-        const [accts, port, nw, nwHistory, cf] = await Promise.all([
+        const [accts, port, nw, nwHistory] = await Promise.all([
           getAccounts(),
           getPortfolio(),
           getNetWorth() as Promise<NetWorthData>,
           getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
-          getCashflow(cashflowPeriod, includeInvestments) as Promise<CashflowData>,
         ]);
 
         if (cancelled) return;
@@ -110,7 +110,6 @@ export function Dashboard() {
         setPortfolio(port);
         setNetWorth(nw);
         setNetWorthHistory(nwHistory);
-        setCashflow(cf);
 
         const balanceMap: Record<string, Balance> = {};
         const balanceResults = await Promise.allSettled(
@@ -121,13 +120,10 @@ export function Dashboard() {
             balanceMap[result.value.account_id] = result.value;
           }
         }
-        if (!cancelled) {
-          setBalances(balanceMap);
-        }
+        if (!cancelled) setBalances(balanceMap);
       } catch (err: unknown) {
         if (!cancelled) {
-          const detail = (err as { detail?: string }).detail ?? 'Échec du chargement des données';
-          setError(detail);
+          setError((err as { detail?: string }).detail ?? 'Échec du chargement des données');
         }
       } finally {
         if (!cancelled) setLoading(false);
@@ -135,6 +131,15 @@ export function Dashboard() {
     }
 
     fetchData();
+    return () => { cancelled = true; };
+  }, []);
+
+  // Cashflow fetch (separate, re-fetches on period/investment toggle change)
+  useEffect(() => {
+    let cancelled = false;
+    getCashflow(cashflowPeriod, includeInvestments)
+      .then((cf) => { if (!cancelled) setCashflow(cf as CashflowData); })
+      .catch(() => {});
     return () => { cancelled = true; };
   }, [cashflowPeriod, includeInvestments]);
 
