@@ -32,7 +32,7 @@ def health(user: AuthUser = Depends(get_current_user)):
 
 
 @router.get("/api/scheduler/status")
-def scheduler_status():
+def scheduler_status(user: AuthUser = Depends(get_current_user)):
     return {"jobs": get_job_status()}
 
 

@@ -12,6 +12,11 @@ class IBKRWorker(ConnectorWorker):
         self._ib = IB()
         host = credentials.get("host", "127.0.0.1")
         port = int(credentials.get("port", 4001))
+        # Prevent SSRF — only allow known IB Gateway hosts
+        allowed_hosts = {"127.0.0.1", "localhost", "ib-gateway"}
+        if host not in allowed_hosts:
+            self.event_queue.put({"type": "error", "message": f"Host non autorisé: {host}"})
+            return
         try:
             self._ib.connect(host, port, clientId=1)
             self.event_queue.put({"type": "status", "state": "connected"})

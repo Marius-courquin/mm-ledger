@@ -92,5 +92,13 @@ class Vault:
     def change_password(self, old_password: str, new_password: str) -> bool:
         if not self._conn:
             return False
+        # Verify old password by trying to open a test connection
+        try:
+            test_conn = sqlcipher3.connect(str(self._path), check_same_thread=False)
+            test_conn.execute('PRAGMA key = "%s"' % old_password.replace('"', '""'))
+            test_conn.execute("SELECT count(*) FROM credentials")
+            test_conn.close()
+        except Exception:
+            return False
         self._conn.execute('PRAGMA rekey = "%s"' % new_password.replace('"', '""'))
         return True

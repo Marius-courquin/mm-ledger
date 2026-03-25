@@ -57,7 +57,10 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
 
         @app.get("/{full_path:path}")
         async def serve_spa(full_path: str):
-            file_path = static_dir / full_path
+            file_path = (static_dir / full_path).resolve()
+            # Prevent path traversal
+            if not str(file_path).startswith(str(static_dir.resolve())):
+                return FileResponse(static_dir / "index.html")
             if file_path.is_file():
                 return FileResponse(file_path)
             return FileResponse(static_dir / "index.html")

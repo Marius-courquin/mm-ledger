@@ -29,5 +29,10 @@ COPY src/ src/
 # Copy built frontend
 COPY --from=frontend-build /app/frontend/dist /app/static
 
+# Run as non-root
+RUN useradd -m -s /bin/bash appuser && \
+    mkdir -p /app/data && chown -R appuser:appuser /app
+USER appuser
+
 EXPOSE 8000
 CMD ["uvicorn", "src.main:app", "--host", "0.0.0.0", "--port", "8000"]
