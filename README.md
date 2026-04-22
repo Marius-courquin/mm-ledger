@@ -119,3 +119,9 @@ Le container `ib-gateway` est spawn dynamiquement par l'app au moment de la conn
 | `GET /docs` | Swagger UI |
 
 Ref complete : `docs/api-reference.md`
+
+## Performance TWR
+
+Le chart "Portfolio Performance" (dashboard et pages compte) calcule une perf TWR (Modified Dietz) à partir de l'historique des trades + prix historiques de chaque broker. Reconstruction complète au premier connect (~2 ans dispos via `reqHistoricalData` IBKR et `aggregateHistoryLight` TR), mise à jour chaque soir à 23h par le scheduler. Toggle `Valeur | Perf` côté UI avec couleurs semantic (`--mm-gain` / `--mm-loss`).
+
+Spec : `docs/superpowers/specs/2026-04-22-perf-chart-twr-design.md`.
