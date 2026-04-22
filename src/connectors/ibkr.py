@@ -57,6 +57,8 @@ class IBKRWorker(ConnectorWorker):
 
     def connect(self, credentials: dict) -> None:
         log.info("IBKR: connector=%s action=connect result=start", self._safe_key())
+        # Émis AVANT le spawn pour couvrir le premier pull d'image (peut durer plusieurs minutes).
+        self.event_queue.put({"type": "status", "state": "starting_gateway"})
         self._docker = docker.from_env()
 
         # 1. Nettoyage d'un éventuel container orphelin
@@ -79,17 +81,20 @@ class IBKRWorker(ConnectorWorker):
             security_opt=["no-new-privileges:true"],
             mem_limit="2g",
             nano_cpus=2_000_000_000,
-            network=IBKR_NETWORK_NAME,
         )
         trading_mode = credentials["trading_mode"]
         gateway_host, gateway_port = self._gateway_endpoint(trading_mode)
         if self._dev_mode():
+            # Dev : bridge docker par défaut + port publié sur loopback hôte.
+            # (Le network mm-ledger-net n'existe que si `docker compose up` a été lancé.)
             run_kwargs["ports"] = {f"{gateway_port}/tcp": ("127.0.0.1", gateway_port)}
+        else:
+            # Prod : network docker dédié, aucun port publié sur l'hôte.
+            run_kwargs["network"] = IBKR_NETWORK_NAME
 
         self._container = self._docker.containers.run(**run_kwargs)
 
         # 3. Poll jusqu'à ce que le port réponde
-        self.event_queue.put({"type": "status", "state": "starting_gateway"})
         deadline = time.time() + IBKR_GATEWAY_START_TIMEOUT
         while time.time() < deadline:
             try:

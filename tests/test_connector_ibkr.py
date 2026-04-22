@@ -135,22 +135,53 @@ def test_connect_passes_hardening_flags_to_container():
     assert kwargs["environment"]["READ_ONLY_API"] == "yes"
 
 
-def test_connect_dev_mode_publishes_port_on_localhost():
+def test_connect_dev_mode_publishes_port_on_localhost_without_network():
     w = _make_worker("u1:ib")
     with patch.object(IBKRWorker, "_dev_mode", return_value=True), \
          _patch_connect_dependencies() as ctx:
         w.connect(_creds())
     kwargs = ctx["docker_client"].containers.run.call_args.kwargs
     assert kwargs.get("ports") == {"4001/tcp": ("127.0.0.1", 4001)}
+    # En dev, pas de network custom (bridge par défaut) — mm-ledger-net
+    # n'existe qu'une fois `docker compose up` lancé, ce qui n'est pas le cas
+    # quand on tourne via `./start.sh` en local.
+    assert "network" not in kwargs or not kwargs["network"]
 
 
-def test_connect_prod_mode_no_port_published():
+def test_connect_prod_mode_no_port_but_internal_network():
     w = _make_worker("u1:ib")
     with patch.object(IBKRWorker, "_dev_mode", return_value=False), \
          _patch_connect_dependencies() as ctx:
         w.connect(_creds())
     kwargs = ctx["docker_client"].containers.run.call_args.kwargs
     assert "ports" not in kwargs or not kwargs["ports"]
+    assert kwargs["network"] == "mm-ledger-net"
+
+
+def test_connect_emits_starting_gateway_before_containers_run():
+    """Le user doit voir 'starting_gateway' pendant le premier pull (~minutes)."""
+    w = _make_worker("u1:ib")
+    call_order = []
+    with _patch_connect_dependencies() as ctx:
+        def record_run(**kwargs):
+            call_order.append("containers.run")
+            return MagicMock()
+
+        ctx["docker_client"].containers.run.side_effect = record_run
+
+        # On instrumente event_queue.put pour tracer quand starting_gateway est émis
+        original_put = w.event_queue.put
+
+        def trace_put(evt):
+            if isinstance(evt, dict) and evt.get("state") == "starting_gateway":
+                call_order.append("starting_gateway_emitted")
+            original_put(evt)
+
+        w.event_queue.put = trace_put
+        w.connect(_creds())
+
+    # starting_gateway doit être émis AVANT containers.run (pour couvrir le pull)
+    assert call_order.index("starting_gateway_emitted") < call_order.index("containers.run")
 
 
 def test_connect_calls_ib_connect_with_correct_endpoint():
