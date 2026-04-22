@@ -422,9 +422,22 @@ class IBKRWorker(ConnectorWorker):
                 for bar in bars
             ]
 
+        # Snapshot de l'état ACTUEL — sert d'ancre pour la reconstruction backwards
+        # (le module performance défait les txs jour par jour depuis aujourd'hui).
+        current_positions_map: dict[str, float] = {}
+        for p in positions:
+            if float(p.position) != 0:
+                current_positions_map[p.contract.symbol] = (
+                    current_positions_map.get(p.contract.symbol, 0.0) + float(p.position)
+                )
+        current_cash = 0.0
+        if account_id:
+            values = self._ib.accountValues(account_id)
+            current_cash = _base_value(values, "TotalCashValue")
+
         log.info(
-            "IBKR: history_data account=%s txs=%d symbols=%d",
-            account_id, len(txs), len(historical_prices),
+            "IBKR: history_data account=%s txs=%d symbols=%d cur_cash=%.2f cur_pos=%d",
+            account_id, len(txs), len(historical_prices), current_cash, len(current_positions_map),
         )
         return {
             "account_id": account_id,
@@ -433,4 +446,6 @@ class IBKRWorker(ConnectorWorker):
             "start_date": start,
             "end_date": end,
             "currency": base_currency,
+            "current_cash": current_cash,
+            "current_positions": current_positions_map,
         }

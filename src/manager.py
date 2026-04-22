@@ -167,7 +167,14 @@ class ConnectorManager:
             )
             for t in raw_txs
         ]
-        timeline = reconstruct_timeline(tx_events, historical_prices, start_date=start, end_date=end)
+        current_cash = data.get("current_cash")
+        current_positions = data.get("current_positions")
+        timeline = reconstruct_timeline(
+            tx_events, historical_prices,
+            start_date=start, end_date=end,
+            current_cash=current_cash,
+            current_positions=current_positions,
+        )
 
         if not timeline:
             return

@@ -148,3 +148,66 @@ def test_aggregate_handles_different_date_ranges():
     assert merged[0]["total_value"] == 100
     assert merged[1]["total_value"] == 310
     assert merged[1]["cash_flow_external"] == 200
+
+
+def test_reconstruct_backwards_from_current_state_no_txs():
+    """Pas de transaction → la courbe = position_qty × close_price chaque jour
+    (exactement ce que IBKR mobile fait quand tu gardes tes titres)."""
+    current_positions = {"AMZN": 2.0}
+    prices = {"AMZN": [
+        {"date": "2026-01-01", "close": 100.0},
+        {"date": "2026-01-02", "close": 110.0},
+        {"date": "2026-01-03", "close": 120.0},
+    ]}
+    timeline = reconstruct_timeline(
+        [], prices, start_date="2026-01-01", end_date="2026-01-03",
+        current_cash=50.0, current_positions=current_positions,
+    )
+    assert len(timeline) == 3
+    # Pas de tx → cash constant = 50, positions constantes à 2 AMZN
+    assert all(pt["cash"] == 50.0 for pt in timeline)
+    assert timeline[0]["positions_value"] == 200.0  # 2 × 100
+    assert timeline[1]["positions_value"] == 220.0
+    assert timeline[2]["positions_value"] == 240.0
+    assert timeline[2]["total_value"] == 290.0
+
+
+def test_reconstruct_backwards_undoes_buy():
+    """Avant un buy de 1 AMZN @100 le jour 2, le user avait 1 AMZN de moins et 100 € de plus."""
+    txs = [TxEvent(date="2026-01-02", kind="buy", symbol="AMZN", qty=1.0, price=100.0, amount=-100.0)]
+    prices = {"AMZN": [
+        {"date": "2026-01-01", "close": 100.0},
+        {"date": "2026-01-02", "close": 100.0},
+        {"date": "2026-01-03", "close": 110.0},
+    ]}
+    # Aujourd'hui (03) : 2 AMZN, cash 500
+    timeline = reconstruct_timeline(
+        txs, prices, start_date="2026-01-01", end_date="2026-01-03",
+        current_cash=500.0, current_positions={"AMZN": 2.0},
+    )
+    # Jour 1 (avant le buy) : 1 AMZN, cash 600 (on a 500 aujourd'hui + 100 qui venaient du cash non dépensé)
+    assert timeline[0]["cash"] == 600.0
+    assert timeline[0]["positions_value"] == 100.0  # 1 × 100
+    # Jour 2 (jour du buy) et 3 : 2 AMZN, cash 500
+    assert timeline[1]["cash"] == 500.0
+    assert timeline[2]["cash"] == 500.0
+    assert timeline[2]["positions_value"] == 220.0
+
+
+def test_reconstruct_backwards_undoes_deposit_tagged_external():
+    """Un dépôt externe garde cash_flow_external positif le jour du dépôt,
+    et avant ce dépôt le user avait N € de moins."""
+    txs = [TxEvent(date="2026-01-02", kind="deposit", amount=1000.0)]
+    timeline = reconstruct_timeline(
+        txs, {}, start_date="2026-01-01", end_date="2026-01-03",
+        current_cash=1500.0, current_positions={},
+    )
+    # Jour 1 : 500 € (avant dépôt)
+    assert timeline[0]["cash"] == 500.0
+    assert timeline[0]["cash_flow_external"] == 0.0
+    # Jour 2 : 1500 € + flag dépôt
+    assert timeline[1]["cash"] == 1500.0
+    assert timeline[1]["cash_flow_external"] == 1000.0
+    # Jour 3 : 1500 €
+    assert timeline[2]["cash"] == 1500.0
+    assert timeline[2]["cash_flow_external"] == 0.0

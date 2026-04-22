@@ -39,14 +39,33 @@ def reconstruct_timeline(
     historical_prices: dict[str, list[dict]],
     start_date: str,
     end_date: str,
+    current_cash: float | None = None,
+    current_positions: dict[str, float] | None = None,
 ) -> list[dict]:
-    """Rebuild daily portfolio state from transactions + historical prices.
+    """Rebuild daily portfolio state.
 
-    Returns : list[{date, cash, positions_value, total_value, cash_flow_external}] sorted ASC.
-    """
+    Deux modes :
+    - **forward** (défaut) : démarre de cash=0, positions={} au start_date et applique
+      les txs. Biais : rate les positions héritées avant la fenêtre.
+    - **backward** (si current_cash OU current_positions fourni) : part de l'état
+      actuel connu (end_date) et défait les txs jour par jour. Reflète la réalité
+      même si l'historique des trades ne couvre pas toute la fenêtre."""
     if start_date > end_date:
         return []
+    if current_cash is not None or current_positions is not None:
+        return _reconstruct_backwards(
+            transactions, historical_prices, start_date, end_date,
+            current_cash or 0.0, current_positions or {},
+        )
+    return _reconstruct_forwards(transactions, historical_prices, start_date, end_date)
 
+
+def _reconstruct_forwards(
+    transactions: list[TxEvent],
+    historical_prices: dict[str, list[dict]],
+    start_date: str,
+    end_date: str,
+) -> list[dict]:
     price_by_date: dict[str, dict[str, float]] = {}
     for symbol, bars in historical_prices.items():
         for bar in bars:
@@ -71,15 +90,7 @@ def reconstruct_timeline(
                 if abs(positions[tx.symbol]) < 1e-9:
                     positions.pop(tx.symbol, None)
 
-        positions_value = 0.0
-        day_prices = price_by_date.get(d, {})
-        for symbol, qty in positions.items():
-            price = day_prices.get(symbol)
-            if price is None:
-                price = _last_known_close(historical_prices.get(symbol, []), d)
-            if price is not None:
-                positions_value += qty * price
-
+        positions_value = _compute_positions_value(positions, price_by_date.get(d, {}), historical_prices, d)
         result.append({
             "date": d,
             "cash": round(cash, 4),
@@ -89,6 +100,74 @@ def reconstruct_timeline(
         })
 
     return result
+
+
+def _reconstruct_backwards(
+    transactions: list[TxEvent],
+    historical_prices: dict[str, list[dict]],
+    start_date: str,
+    end_date: str,
+    current_cash: float,
+    current_positions: dict[str, float],
+) -> list[dict]:
+    price_by_date: dict[str, dict[str, float]] = {}
+    for symbol, bars in historical_prices.items():
+        for bar in bars:
+            price_by_date.setdefault(bar["date"], {})[symbol] = float(bar["close"])
+
+    txs_by_date: dict[str, list[TxEvent]] = {}
+    for tx in transactions:
+        txs_by_date.setdefault(tx.date, []).append(tx)
+
+    all_dates = _daterange(start_date, end_date)
+    state_by_date: dict[str, tuple[float, dict[str, float]]] = {
+        all_dates[-1]: (current_cash, dict(current_positions)),
+    }
+    for i in range(len(all_dates) - 1, 0, -1):
+        today = all_dates[i]
+        yesterday = all_dates[i - 1]
+        cash, positions = state_by_date[today]
+        cash = float(cash)
+        positions = dict(positions)
+        for tx in txs_by_date.get(today, []):
+            cash -= tx.amount
+            if tx.kind in ("buy", "sell") and tx.symbol:
+                positions[tx.symbol] = positions.get(tx.symbol, 0.0) - tx.qty
+                if abs(positions[tx.symbol]) < 1e-9:
+                    positions.pop(tx.symbol, None)
+        state_by_date[yesterday] = (cash, positions)
+
+    result = []
+    for d in all_dates:
+        cash, positions = state_by_date[d]
+        daily_external_cf = sum(
+            tx.amount for tx in txs_by_date.get(d, []) if tx.kind in EXTERNAL_KINDS
+        )
+        positions_value = _compute_positions_value(positions, price_by_date.get(d, {}), historical_prices, d)
+        result.append({
+            "date": d,
+            "cash": round(cash, 4),
+            "positions_value": round(positions_value, 4),
+            "total_value": round(cash + positions_value, 4),
+            "cash_flow_external": round(daily_external_cf, 4),
+        })
+    return result
+
+
+def _compute_positions_value(
+    positions: dict[str, float],
+    day_prices: dict[str, float],
+    historical_prices: dict[str, list[dict]],
+    as_of: str,
+) -> float:
+    total = 0.0
+    for symbol, qty in positions.items():
+        price = day_prices.get(symbol)
+        if price is None:
+            price = _last_known_close(historical_prices.get(symbol, []), as_of)
+        if price is not None:
+            total += qty * price
+    return total
 
 
 def _last_known_close(bars: list[dict], as_of: str) -> float | None:
