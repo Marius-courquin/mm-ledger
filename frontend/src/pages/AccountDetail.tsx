@@ -49,6 +49,7 @@ function periodToDays(period: string): number | null {
 const statusLabels: Record<WorkerState, string> = {
   connected: 'Connecté',
   connecting: 'Connexion...',
+  starting_gateway: 'Démarrage gateway...',
   waiting_2fa: 'En attente 2FA',
   error: 'Erreur',
   disconnected: 'Déconnecté',

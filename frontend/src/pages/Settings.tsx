@@ -33,6 +33,7 @@ import { formatRelativeTime } from '@/lib/format';
 const statusColors: Record<WorkerState, string> = {
   connected: 'text-green-400',
   connecting: 'text-yellow-400',
+  starting_gateway: 'text-yellow-400',
   waiting_2fa: 'text-yellow-400',
   error: 'text-red-400',
   disconnected: 'text-gray-400',

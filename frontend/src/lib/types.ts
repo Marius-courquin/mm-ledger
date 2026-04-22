@@ -7,7 +7,7 @@ export interface VaultStatus {
 // ── Connectors ───────────────────────────────────────────────────────────────
 
 export type ConnectorType = 'trade_republic' | 'ibkr' | 'woob_bank';
-export type WorkerState = 'disconnected' | 'connecting' | 'connected' | 'waiting_2fa' | 'error';
+export type WorkerState = 'disconnected' | 'connecting' | 'starting_gateway' | 'connected' | 'waiting_2fa' | 'error';
 
 export interface WorkerInfo {
   state: WorkerState;
@@ -30,10 +30,11 @@ export interface Connector {
 
 export interface CredentialField {
   name: string;
-  type: 'text' | 'password' | 'number';
+  type: 'text' | 'password' | 'number' | 'select';
   required: boolean;
   placeholder?: string;
   default?: string | number;
+  options?: Array<{ value: string; label: string }>;
 }
 
 export interface ConnectorTypeInfo {

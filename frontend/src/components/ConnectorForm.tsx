@@ -130,6 +130,28 @@ export function ConnectorForm({
       return null;
     }
 
+    // Generic select field
+    if (field.type === 'select' && field.options) {
+      return (
+        <div key={field.name} className="flex flex-col gap-1.5">
+          <label className="text-xs font-medium text-mm-text-secondary capitalize">
+            {fieldLabel}
+            {field.required && <span className="text-red-400 ml-0.5">*</span>}
+          </label>
+          <select
+            value={values[field.name] ?? ''}
+            onChange={(e) => onChange(field.name, e.target.value)}
+            className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-3 py-2 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors appearance-none cursor-pointer"
+          >
+            {!field.required && <option value="">—</option>}
+            {field.options.map((opt) => (
+              <option key={opt.value} value={opt.value}>{opt.label}</option>
+            ))}
+          </select>
+        </div>
+      );
+    }
+
     return (
       <div key={field.name} className="flex flex-col gap-1.5">
         <label className="text-xs font-medium text-mm-text-secondary capitalize">

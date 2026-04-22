@@ -15,6 +15,7 @@ import type { ConnectorTypeInfo, ConnectorType, WorkerState, Account } from '@/l
 const statusConfig: Record<WorkerState, { color: string; label: string }> = {
   connected: { color: 'bg-green-500', label: 'Connecté' },
   connecting: { color: 'bg-yellow-500', label: 'Connexion...' },
+  starting_gateway: { color: 'bg-yellow-500', label: 'Démarrage gateway...' },
   waiting_2fa: { color: 'bg-yellow-500', label: 'En attente 2FA' },
   error: { color: 'bg-red-500', label: 'Erreur' },
   disconnected: { color: 'bg-gray-500', label: 'Déconnecté' },
@@ -186,6 +187,13 @@ export function Accounts() {
               <div className="text-xs text-mm-text-muted">
                 {accts.length} compte{accts.length !== 1 ? 's' : ''}
               </div>
+
+              {/* Error detail */}
+              {workerState === 'error' && connector.worker?.detail && (
+                <div className="text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-md px-2 py-1.5">
+                  {connector.worker.detail}
+                </div>
+              )}
 
               {/* Bottom: actions */}
               <div className="flex items-center justify-between pt-1">
