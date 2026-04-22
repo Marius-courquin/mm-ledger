@@ -9,7 +9,8 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
-import { PerformanceChart } from '@/components/PerformanceChart';
+import { PortfolioPerfChart } from '@/components/PortfolioPerfChart';
+import { getPerformanceHistory, type PerfHistory } from '@/api/performance';
 import { useApp } from '@/context/AppContext';
 import {
   getConnectorStatus,
@@ -17,7 +18,6 @@ import {
   disconnectConnector,
 } from '@/api/connectors';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
-import { getSnapshots } from '@/api/snapshots';
 import { getTransactions } from '@/api/transactions';
 import {
   formatCurrency,
@@ -27,7 +27,6 @@ import {
 import type {
   Account,
   Balance,
-  Snapshot,
   Transaction,
   WorkerInfo,
   WorkerState,
@@ -35,16 +34,13 @@ import type {
 
 const PERIODS = ['1W', '1M', '3M', '1Y', 'All'] as const;
 
-function periodToDays(period: string): number | null {
-  switch (period) {
-    case '1W': return 7;
-    case '1M': return 30;
-    case '3M': return 90;
-    case '1Y': return 365;
-    case 'All': return null;
-    default: return 90;
-  }
+function periodLabelFr(p: string): string {
+  const map: Record<string, string> = {
+    '1W': '7 jours', '1M': '1 mois', '3M': '3 mois', '1Y': '1 an', 'All': 'tout',
+  };
+  return map[p] ?? p;
 }
+
 
 const statusLabels: Record<WorkerState, string> = {
   connected: 'Connecté',
@@ -74,9 +70,9 @@ export function AccountDetail() {
   const [workerInfo, setWorkerInfo] = useState<WorkerInfo | null>(null);
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
-  const [snapshots, setSnapshots] = useState<Snapshot[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [activePeriod, setActivePeriod] = useState<string>('3M');
+  const [perfHistory, setPerfHistory] = useState<PerfHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -97,16 +93,8 @@ export function AccountDetail() {
         setWorkerInfo(status);
         setAccounts(accts);
 
-        const firstAccountId = accts[0]?.id;
-
-        const [balanceResults, snapResults, txResults] = await Promise.all([
+        const [balanceResults, txResults] = await Promise.all([
           Promise.allSettled(accts.map((a) => getAccountBalance(a.id))),
-          firstAccountId
-            ? getSnapshots({
-                account_id: firstAccountId,
-                from: new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0],
-              })
-            : Promise.resolve([]),
           Promise.allSettled(
             accts.map((a) => getTransactions({ account_id: a.id, limit: 50 }))
           ),
@@ -119,7 +107,6 @@ export function AccountDetail() {
           if (r.status === 'fulfilled') bals.push(r.value);
         }
         setBalances(bals);
-        setSnapshots(snapResults);
 
         const txs: Transaction[] = [];
         for (const r of txResults) {
@@ -158,27 +145,13 @@ export function AccountDetail() {
   const workerState: WorkerState = workerInfo?.state ?? connector?.worker?.state ?? 'disconnected';
   const isConnected = workerState === 'connected';
 
-  // Chart data
-  const chartData = useMemo(() => {
-    const days = periodToDays(activePeriod);
-    const cutoff = days ? Date.now() - days * 86400000 : 0;
-
-    const dateMap = new Map<string, number>();
-    for (const snap of snapshots) {
-      const snapTime = new Date(snap.date).getTime();
-      if (snapTime >= cutoff) {
-        const dateKey = snap.date.split('T')[0] ?? snap.date;
-        dateMap.set(dateKey, (dateMap.get(dateKey) ?? 0) + snap.total_value);
-      }
-    }
-
-    return Array.from(dateMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([date, value]) => ({
-        date: formatShortDate(date),
-        value: Math.round(value * 100) / 100,
-      }));
-  }, [snapshots, activePeriod]);
+  // Fetch perf history scopé par connector_id, refetch on period change
+  useEffect(() => {
+    if (!id) return;
+    getPerformanceHistory({ period: activePeriod, connector_id: id })
+      .then(setPerfHistory)
+      .catch(() => setPerfHistory(null));
+  }, [id, activePeriod]);
 
   async function handleConnect() {
     if (!id) return;
@@ -297,12 +270,16 @@ export function AccountDetail() {
         />
       </div>
 
-      {/* Balance History Chart */}
-      <PerformanceChart
-        data={chartData}
+      {/* Courbe perf TWR scopée par connecteur */}
+      <PortfolioPerfChart
+        series={perfHistory?.series ?? []}
+        totalPct={perfHistory?.total_pct ?? 0}
+        valueNow={perfHistory?.value_now ?? 0}
+        currency={perfHistory?.currency ?? currency}
         periods={[...PERIODS]}
         activePeriod={activePeriod}
         onPeriodChange={setActivePeriod}
+        periodLabel={periodLabelFr(activePeriod)}
       />
 
       {/* Transactions Table */}
