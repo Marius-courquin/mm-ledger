@@ -136,3 +136,48 @@ def test_connect_calls_ib_connect_with_correct_endpoint():
          _patch_connect_dependencies() as ctx:
         w.connect(_creds())
     ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4001, clientId=1)
+
+
+def test_connect_removes_orphan_container_before_spawn():
+    w = _make_worker("u1:ib")
+    with patch("src.connectors.ibkr.docker") as mock_docker, \
+         patch("src.connectors.ibkr.IB"), \
+         patch("src.connectors.ibkr.socket.create_connection"), \
+         patch("src.connectors.ibkr.time.sleep"):
+        client = MagicMock()
+        orphan = MagicMock()
+        client.containers.get.return_value = orphan
+        client.containers.run.return_value = MagicMock()
+        mock_docker.from_env.return_value = client
+        w.connect(_creds())
+        orphan.stop.assert_called_once()
+        orphan.remove.assert_called_once_with(force=True)
+
+
+def test_connect_timeout_emits_error_without_creds():
+    w = _make_worker("u1:ib")
+
+    counter = [0]
+
+    def fake_time():
+        counter[0] += 100
+        return counter[0]
+
+    with patch("src.connectors.ibkr.docker") as mock_docker, \
+         patch("src.connectors.ibkr.IB"), \
+         patch("src.connectors.ibkr.socket.create_connection", side_effect=OSError("refused")), \
+         patch("src.connectors.ibkr.time.sleep"), \
+         patch("src.connectors.ibkr.time.time", side_effect=fake_time):
+        client = MagicMock()
+        client.containers.get.side_effect = _docker_errors_not_found()
+        client.containers.run.return_value = MagicMock()
+        mock_docker.from_env.return_value = client
+
+        import pytest as _pt
+        with _pt.raises(TimeoutError) as excinfo:
+            w.connect(_creds())
+        msg = str(excinfo.value)
+        assert "ib-gateway n'a pas démarré" in msg
+        # Anti-leak: aucun credential dans le message d'erreur
+        assert "charlie" not in msg
+        assert "s3cret" not in msg
