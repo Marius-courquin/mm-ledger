@@ -1,4 +1,4 @@
-from src.performance import reconstruct_timeline, TxEvent
+from src.performance import reconstruct_timeline, TxEvent, compute_twr
 
 
 def _tx(date: str, kind: str, **kw) -> TxEvent:
@@ -74,3 +74,47 @@ def test_reconstruct_dividend_is_internal_gain():
     assert timeline[2]["cash_flow_external"] == 0.0
     assert timeline[2]["cash"] == -195.0
     assert timeline[2]["total_value"] == 5.0
+
+
+def test_twr_flat_no_move():
+    timeline = [
+        {"date": "2026-01-01", "cash": 0, "positions_value": 1000, "total_value": 1000, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 0, "positions_value": 1000, "total_value": 1000, "cash_flow_external": 0},
+    ]
+    curve = compute_twr(timeline)
+    assert len(curve) == 2
+    assert curve[0]["cum_pct"] == 0.0
+    assert curve[1]["cum_pct"] == 0.0
+
+
+def test_twr_simple_gain():
+    timeline = [
+        {"date": "2026-01-01", "cash": 0, "positions_value": 1000, "total_value": 1000, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 0, "positions_value": 1100, "total_value": 1100, "cash_flow_external": 0},
+    ]
+    curve = compute_twr(timeline)
+    assert abs(curve[1]["cum_pct"] - 10.0) < 0.01
+
+
+def test_twr_neutralizes_deposit():
+    timeline = [
+        {"date": "2026-01-01", "cash": 0, "positions_value": 1000, "total_value": 1000, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 500, "positions_value": 1000, "total_value": 1500, "cash_flow_external": 500},
+        {"date": "2026-01-03", "cash": 500, "positions_value": 1150, "total_value": 1650, "cash_flow_external": 0},
+    ]
+    curve = compute_twr(timeline)
+    assert abs(curve[0]["cum_pct"] - 0.0) < 0.01
+    assert abs(curve[1]["cum_pct"] - 0.0) < 0.01
+    assert abs(curve[2]["cum_pct"] - 10.0) < 0.01
+
+
+def test_twr_handles_zero_base():
+    timeline = [
+        {"date": "2026-01-01", "cash": 0, "positions_value": 0, "total_value": 0, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 1000, "positions_value": 0, "total_value": 1000, "cash_flow_external": 1000},
+        {"date": "2026-01-03", "cash": 0, "positions_value": 1100, "total_value": 1100, "cash_flow_external": 0},
+    ]
+    curve = compute_twr(timeline)
+    assert curve[0]["cum_pct"] == 0.0
+    assert curve[1]["cum_pct"] == 0.0
+    assert abs(curve[2]["cum_pct"] - 10.0) < 0.01

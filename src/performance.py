@@ -94,3 +94,36 @@ def reconstruct_timeline(
 def _last_known_close(bars: list[dict], as_of: str) -> float | None:
     candidates = [float(b["close"]) for b in bars if b["date"] <= as_of]
     return candidates[-1] if candidates else None
+
+
+def compute_twr(timeline: list[dict]) -> list[dict]:
+    """Chaîne les rendements journaliers Modified Dietz.
+
+    Formule par jour i :
+        r_i = (V_i - V_{i-1} - CF_i) / V_{i-1}
+
+    Rendement cumulé : ∏ (1 + r_i) − 1, exprimé en pourcentage.
+    """
+    if not timeline:
+        return []
+
+    curve = [{"date": timeline[0]["date"], "cum_pct": 0.0}]
+    cumulative_factor = 1.0
+
+    for i in range(1, len(timeline)):
+        prev_v = timeline[i - 1]["total_value"]
+        curr_v = timeline[i]["total_value"]
+        cf = timeline[i].get("cash_flow_external", 0.0)
+
+        if prev_v <= 0:
+            curve.append({"date": timeline[i]["date"], "cum_pct": round((cumulative_factor - 1) * 100, 4)})
+            continue
+
+        daily_return = (curr_v - prev_v - cf) / prev_v
+        cumulative_factor *= (1.0 + daily_return)
+        curve.append({
+            "date": timeline[i]["date"],
+            "cum_pct": round((cumulative_factor - 1) * 100, 4),
+        })
+
+    return curve
