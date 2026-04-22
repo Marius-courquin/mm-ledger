@@ -83,3 +83,22 @@ net_worth_snapshots = Table(
 Index("idx_snapshots_account_date", balance_snapshots.c.account_id, balance_snapshots.c.date)
 Index("idx_transactions_account_date", transactions.c.account_id, transactions.c.date)
 Index("idx_performance_connector_period", performance.c.connector_id, performance.c.period_start)
+
+portfolio_history_daily = Table(
+    "portfolio_history_daily", metadata,
+    Column("connector_id", Text, nullable=False),
+    Column("account_id", Text, nullable=False),
+    Column("date", Text, nullable=False),
+    Column("total_value", REAL, nullable=False),
+    Column("cash", REAL, nullable=False),
+    Column("positions_value", REAL, nullable=False),
+    Column("cash_flow_external", REAL, nullable=False, default=0.0),
+    Column("currency", Text, nullable=False, default="EUR"),
+    UniqueConstraint("connector_id", "account_id", "date"),
+)
+
+Index(
+    "idx_portfolio_history_connector_date",
+    portfolio_history_daily.c.connector_id,
+    portfolio_history_daily.c.date,
+)
