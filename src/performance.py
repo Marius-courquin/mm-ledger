@@ -176,34 +176,56 @@ def _last_known_close(bars: list[dict], as_of: str) -> float | None:
 
 
 def compute_twr(timeline: list[dict]) -> list[dict]:
-    """Chaîne les rendements journaliers Modified Dietz.
+    """Rendement cumulé en % — chaîne des rendements journaliers TWR avec anchor
+    à la première valeur "matérielle" + safeguard anti-explosion.
 
-    Formule par jour i :
-        r_i = (V_i - V_{i-1} - CF_i) / V_{i-1}
+    Pour chaque jour t > anchor :
+        r_t = (V_t - V_{t-1} - CF_t) / V_{t-1}    (clamped to [-99%, +1000%])
+        cum_pct(t) = (∏(1 + r_i) − 1) × 100
 
-    Rendement cumulé : ∏ (1 + r_i) − 1, exprimé en pourcentage.
+    Anchor = première valeur ≥ MATERIAL_THRESHOLD. Avant anchor, cum_pct = 0.
+    Si prev_v descend sous le threshold (comptes quasi-vidés), on re-ancre au point
+    courant sans compounder ce jour-là → évite les +188955% causés par division
+    par ~0 (bug observé chez Charles : courbe All écrasée à cause d'un V_start=0.01€).
     """
     if not timeline:
         return []
 
-    curve = [{"date": timeline[0]["date"], "cum_pct": 0.0}]
+    MATERIAL_THRESHOLD = 10.0
+    MAX_DAILY = 10.0   # +1000%
+    MIN_DAILY = -0.99  # -99%
+
+    start_idx = -1
+    for i, pt in enumerate(timeline):
+        if pt["total_value"] >= MATERIAL_THRESHOLD:
+            start_idx = i
+            break
+    if start_idx < 0:
+        return [{"date": pt["date"], "cum_pct": 0.0} for pt in timeline]
+
+    curve = [{"date": pt["date"], "cum_pct": 0.0} for pt in timeline[:start_idx + 1]]
     cumulative_factor = 1.0
+    prev_v = timeline[start_idx]["total_value"]
 
-    for i in range(1, len(timeline)):
-        prev_v = timeline[i - 1]["total_value"]
-        curr_v = timeline[i]["total_value"]
-        cf = timeline[i].get("cash_flow_external", 0.0)
+    for i in range(start_idx + 1, len(timeline)):
+        pt = timeline[i]
+        curr_v = pt["total_value"]
+        cf = pt.get("cash_flow_external", 0.0)
 
-        if prev_v <= 0:
-            curve.append({"date": timeline[i]["date"], "cum_pct": round((cumulative_factor - 1) * 100, 4)})
+        if prev_v < MATERIAL_THRESHOLD:
+            # Réancrage : on ne compound pas si la base est instable (≈ 0 / négative)
+            prev_v = curr_v
+            curve.append({"date": pt["date"], "cum_pct": round((cumulative_factor - 1) * 100, 4)})
             continue
 
         daily_return = (curr_v - prev_v - cf) / prev_v
+        if daily_return > MAX_DAILY:
+            daily_return = MAX_DAILY
+        elif daily_return < MIN_DAILY:
+            daily_return = MIN_DAILY
         cumulative_factor *= (1.0 + daily_return)
-        curve.append({
-            "date": timeline[i]["date"],
-            "cum_pct": round((cumulative_factor - 1) * 100, 4),
-        })
+        prev_v = curr_v
+        curve.append({"date": pt["date"], "cum_pct": round((cumulative_factor - 1) * 100, 4)})
 
     return curve
 

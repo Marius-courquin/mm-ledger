@@ -196,7 +196,11 @@ class TradeRepublicWorker(ConnectorWorker):
                 accounts_data = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
                 log.info(f"Accounts: {len(accounts_data.get('accounts', []))} found")
                 if accounts_data:
-                    self.event_queue.put({"type": "accounts", "data": accounts_data})
+                    # /api/accounts itère `for acc in data.get("accounts", [])` — il faut
+                    # lui envoyer la LISTE, pas le dict {"accounts": [...]}. Sans ça la page
+                    # détail du connecteur affiche "0 comptes".
+                    accs_list = accounts_data.get("accounts", []) if isinstance(accounts_data, dict) else accounts_data
+                    self.event_queue.put({"type": "accounts", "data": accs_list})
 
                 accs = accounts_data.get("accounts", []) if isinstance(accounts_data, dict) else []
 
