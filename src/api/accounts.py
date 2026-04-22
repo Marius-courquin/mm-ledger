@@ -54,11 +54,14 @@ def get_balance(account_id: str, user: AuthUser = Depends(get_current_user)):
             if isinstance(b, dict):
                 b_id = b.get("account_id") or b.get("accountNumber") or ""
                 if b_id == account_id:
+                    cash = float(b.get("amount", 0) or b.get("cash", 0) or b.get("total_value", 0))
+                    total = float(b.get("total_value", 0)) or cash
+                    pv_raw = b.get("positions_value")
                     return {
                         "account_id": account_id,
-                        "cash": float(b.get("amount", 0) or b.get("total_value", 0)),
-                        "positions_value": None,
-                        "total_value": float(b.get("amount", 0) or b.get("total_value", 0)),
+                        "cash": cash,
+                        "positions_value": float(pv_raw) if pv_raw is not None else None,
+                        "total_value": total,
                         "currency": b.get("currencyId") or b.get("currency", "EUR"),
                         "updated_at": None,
                     }

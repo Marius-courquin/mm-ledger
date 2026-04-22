@@ -27,6 +27,25 @@ IBKR_API_AUTH_TIMEOUT = 180       # seconds — ib_async handshake (2FA inclus)
 IBKR_API_RETRY_DELAY = 5          # seconds entre 2 tentatives IB.connect()
 
 
+def _base_value(values, tag: str, default: float = 0.0) -> float:
+    """Extrait un tag d'accountValues en filtrant sur currency=BASE quand possible,
+    sinon prend la première occurrence. Les accountValues d'IBKR retournent une ligne
+    par (tag, currency) ; la currency='BASE' est la valeur agrégée en monnaie de base."""
+    base = next((v.value for v in values if v.tag == tag and v.currency == "BASE"), None)
+    if base is not None:
+        try:
+            return float(base)
+        except (TypeError, ValueError):
+            return default
+    any_val = next((v.value for v in values if v.tag == tag), None)
+    if any_val is not None:
+        try:
+            return float(any_val)
+        except (TypeError, ValueError):
+            return default
+    return default
+
+
 class IBKRWorker(ConnectorWorker):
     def __init__(self, cmd_queue, event_queue, config):
         super().__init__(cmd_queue, event_queue, config)
@@ -197,50 +216,44 @@ class IBKRWorker(ConnectorWorker):
         return [{"id": a, "name": a, "type": "margin"} for a in self._ib.managedAccounts()]
 
     def fetch_positions(self) -> list[dict]:
+        """Format TR-compatible : une entrée par compte IBKR, avec les positions
+        regroupées sous une catégorie 'stocksAndETFs'. Permet au endpoint
+        /api/portfolio (code TR-centric) de consommer les données directement."""
         if not self._ib:
             return []
-        raw = self._ib.positions()
+        positions = self._ib.positions()
+        portfolio_items = self._ib.portfolio()
+        pf_by = {p.contract.conId: p for p in portfolio_items}
         log.info(
-            "IBKR: positions raw_count=%d sample=%s",
-            len(raw),
-            [(p.account, p.contract.symbol, p.contract.secType, float(p.position)) for p in raw[:5]],
+            "IBKR: positions raw_count=%d portfolio_count=%d",
+            len(positions), len(portfolio_items),
         )
-        # Fallback : si positions() est vide, essayer portfolio() qui peut contenir
-        # des holdings suivis via accountUpdates (subscription différente).
-        if not raw:
-            try:
-                pf = self._ib.portfolio()
-                log.info(
-                    "IBKR: portfolio fallback count=%d sample=%s",
-                    len(pf),
-                    [(p.account, p.contract.symbol, float(p.position), float(p.marketValue)) for p in pf[:5]],
-                )
-                return [
-                    {
-                        "account_id": p.account,
-                        "instrument": str(p.contract.conId),
-                        "symbol": p.contract.symbol,
-                        "category": p.contract.secType.lower(),
-                        "quantity": float(p.position),
-                        "avg_price": float(p.averageCost) if p.averageCost else 0.0,
-                        "currency": p.contract.currency,
-                    }
-                    for p in pf
-                    if float(p.position) != 0
-                ]
-            except Exception as e:
-                log.warning("IBKR: portfolio() fallback failed: %s", type(e).__name__)
+
+        by_account: dict[str, list[dict]] = {}
+        for p in positions:
+            pf = pf_by.get(p.contract.conId)
+            current_price = float(pf.marketPrice) if pf and pf.marketPrice else None
+            by_account.setdefault(p.account, []).append({
+                "isin": str(p.contract.conId),
+                "name": p.contract.symbol,
+                "shortName": p.contract.symbol,
+                "netSize": float(p.position),
+                "averageBuyIn": float(p.avgCost) if p.avgCost else 0.0,
+                "currentPrice": current_price,
+                "currencyId": p.contract.currency,
+            })
+
         return [
             {
-                "account_id": p.account,
-                "instrument": str(p.contract.conId),
-                "symbol": p.contract.symbol,
-                "category": p.contract.secType.lower(),
-                "quantity": float(p.position),
-                "avg_price": float(p.avgCost),
-                "currency": p.contract.currency,
+                "secAccNo": acc,
+                "productType": "DEFAULT",
+                "label": f"IBKR {acc}",
+                "categories": [{
+                    "categoryType": "stocksAndETFs",
+                    "positions": pos_list,
+                }],
             }
-            for p in raw
+            for acc, pos_list in by_account.items()
         ]
 
     def fetch_balances(self) -> list[dict]:
@@ -249,15 +262,35 @@ class IBKRWorker(ConnectorWorker):
         out = []
         for acc in self._ib.managedAccounts():
             values = self._ib.accountValues(acc)
-            net_liq = next((v.value for v in values if v.tag == "NetLiquidation"), 0)
-            cash = next((v.value for v in values if v.tag == "TotalCashBalance"), 0)
-            currency = next((v.currency for v in values if v.tag == "NetLiquidation"), "EUR")
+            # Dump les tags pertinents pour diagnostic (premier connect)
+            relevant = [(v.tag, v.currency, v.value) for v in values if v.tag in (
+                "NetLiquidation", "TotalCashValue", "TotalCashBalance",
+                "GrossPositionValue", "StockMarketValue", "AccountCurrency",
+            )]
+            log.info("IBKR: account=%s values_sample=%s", acc, relevant[:20])
+
+            total = _base_value(values, "NetLiquidation")
+            cash = _base_value(values, "TotalCashValue")
+            if cash == 0:
+                cash = _base_value(values, "TotalCashBalance")
+            positions_val = _base_value(values, "GrossPositionValue")
+            if positions_val == 0:
+                positions_val = max(0.0, total - cash)
+            currency = (
+                next((v.value for v in values if v.tag == "AccountCurrency"), None)
+                or "EUR"
+            )
             out.append({
                 "account_id": acc,
-                "cash": float(cash),
-                "total_value": float(net_liq),
-                "positions_value": float(net_liq) - float(cash),
+                "accountNumber": acc,          # matching pour portfolio.py (TR-shape)
+                "productType": "DEFAULT",
+                "label": f"IBKR {acc}",
+                "amount": cash,                # portfolio.py somme 'amount' pour cash total
+                "cash": cash,
+                "total_value": total,
+                "positions_value": positions_val,
                 "currency": currency,
+                "currencyId": currency,
             })
         return out
 
