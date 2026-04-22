@@ -218,29 +218,38 @@ class IBKRWorker(ConnectorWorker):
     def fetch_positions(self) -> list[dict]:
         """Format TR-compatible : une entrée par compte IBKR, avec les positions
         regroupées sous une catégorie 'stocksAndETFs'. Permet au endpoint
-        /api/portfolio (code TR-centric) de consommer les données directement."""
+        /api/portfolio (code TR-centric) de consommer les données directement.
+
+        Les prix (avgCost, marketPrice) arrivent d'IBKR dans la currency native du
+        contrat (ex. USD pour actions US). On les convertit en BASE currency du
+        compte pour que le front affiche tout de manière cohérente en EUR. Taux
+        via tag ExchangeRate d'IBKR, fallback sur ratio StockMarketValue/BASE."""
         if not self._ib:
             return []
         positions = self._ib.positions()
         portfolio_items = self._ib.portfolio()
         pf_by = {p.contract.conId: p for p in portfolio_items}
+
+        fx_to_base, base_currency = self._fx_to_base()
         log.info(
-            "IBKR: positions raw_count=%d portfolio_count=%d",
-            len(positions), len(portfolio_items),
+            "IBKR: positions raw_count=%d portfolio_count=%d fx_to_base=%s base=%s",
+            len(positions), len(portfolio_items), fx_to_base, base_currency,
         )
 
         by_account: dict[str, list[dict]] = {}
         for p in positions:
             pf = pf_by.get(p.contract.conId)
-            current_price = float(pf.marketPrice) if pf and pf.marketPrice else None
+            native_price = float(pf.marketPrice) if pf and pf.marketPrice else None
+            native_cost = float(p.avgCost) if p.avgCost else 0.0
+            rate = fx_to_base.get(p.contract.currency, 1.0)
             by_account.setdefault(p.account, []).append({
                 "isin": str(p.contract.conId),
                 "name": p.contract.symbol,
                 "shortName": p.contract.symbol,
                 "netSize": float(p.position),
-                "averageBuyIn": float(p.avgCost) if p.avgCost else 0.0,
-                "currentPrice": current_price,
-                "currencyId": p.contract.currency,
+                "averageBuyIn": native_cost * rate,
+                "currentPrice": native_price * rate if native_price is not None else None,
+                "currencyId": base_currency,
             })
 
         return [
@@ -255,6 +264,48 @@ class IBKRWorker(ConnectorWorker):
             }
             for acc, pos_list in by_account.items()
         ]
+
+    def _fx_to_base(self) -> tuple[dict[str, float], str]:
+        """Retourne (currency → multiplicateur vers BASE, label de la BASE currency).
+
+        Stratégie :
+        1. Tag ExchangeRate d'IBKR : valeur = "amount of currency per 1 BASE"
+           → inverse = multiplicateur pour currency → BASE.
+        2. Fallback : ratio StockMarketValue(BASE) / StockMarketValue(currency)
+           sur les comptes où des stocks existent dans cette currency.
+        """
+        accounts = self._ib.managedAccounts()
+        if not accounts:
+            return {}, "EUR"
+        values = self._ib.accountValues(accounts[0])
+        base_currency = (
+            next((v.value for v in values if v.tag == "AccountCurrency"), None)
+            or "EUR"
+        )
+        rates: dict[str, float] = {base_currency: 1.0}
+        # Primary : ExchangeRate tag
+        for v in values:
+            if v.tag == "ExchangeRate" and v.currency and v.currency != "BASE":
+                try:
+                    ibkr_rate = float(v.value)
+                    if ibkr_rate > 0:
+                        rates[v.currency] = 1.0 / ibkr_rate
+                except (TypeError, ValueError):
+                    pass
+        # Fallback : dériver depuis StockMarketValue BASE / StockMarketValue(currency)
+        smv_base = _base_value(values, "StockMarketValue")
+        if smv_base > 0:
+            for v in values:
+                if v.tag == "StockMarketValue" and v.currency not in (None, "", "BASE", base_currency):
+                    if v.currency in rates:
+                        continue  # déjà depuis ExchangeRate
+                    try:
+                        native = float(v.value)
+                        if native > 0:
+                            rates[v.currency] = smv_base / native
+                    except (TypeError, ValueError):
+                        pass
+        return rates, base_currency
 
     def fetch_balances(self) -> list[dict]:
         if not self._ib:
