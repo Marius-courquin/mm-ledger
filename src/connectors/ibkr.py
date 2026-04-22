@@ -1,6 +1,14 @@
 import logging
 import os
 import re
+import socket
+import time
+
+import docker
+import docker.errors
+from docker.errors import APIError as DockerAPIError
+from docker.errors import NotFound as DockerNotFound
+from ib_async import IB
 
 from src.connectors.base import ConnectorWorker
 
@@ -46,7 +54,72 @@ class IBKRWorker(ConnectorWorker):
     # ── contract methods ────────────────────────────────────────────────
 
     def connect(self, credentials: dict) -> None:
-        raise NotImplementedError  # Task 7
+        self._docker = docker.from_env()
+
+        # 1. Nettoyage d'un éventuel container orphelin
+        self._remove_existing_container()
+
+        # 2. Spawn ib-gateway (hardened)
+        run_kwargs = dict(
+            image=IBKR_GATEWAY_IMAGE,
+            name=self._container_name,
+            environment={
+                "TWS_USERID": credentials["username"],
+                "TWS_PASSWORD": credentials["password"],
+                "TRADING_MODE": credentials["trading_mode"],
+                "READ_ONLY_API": "yes",
+                "TWOFA_TIMEOUT_ACTION": "restart",
+            },
+            detach=True,
+            auto_remove=True,
+            labels={"mm-ledger": "ibkr-gateway"},
+            security_opt=["no-new-privileges:true"],
+            mem_limit="2g",
+            nano_cpus=2_000_000_000,
+            network=IBKR_NETWORK_NAME,
+        )
+        if self._dev_mode():
+            run_kwargs["ports"] = {"4001/tcp": ("127.0.0.1", IBKR_GATEWAY_PORT)}
+
+        self._container = self._docker.containers.run(**run_kwargs)
+
+        # 3. Poll jusqu'à ce que le port réponde
+        self.event_queue.put({"type": "status", "state": "starting_gateway"})
+        gateway_host, gateway_port = self._gateway_endpoint()
+        deadline = time.time() + IBKR_GATEWAY_START_TIMEOUT
+        while time.time() < deadline:
+            try:
+                with socket.create_connection((gateway_host, gateway_port), timeout=2):
+                    break
+            except OSError:
+                time.sleep(2)
+        else:
+            self._stop_container()
+            raise TimeoutError(
+                f"ib-gateway n'a pas démarré dans les {IBKR_GATEWAY_START_TIMEOUT}s. "
+                f"Consulter 'docker logs {self._container_name}'."
+            )
+
+        # 4. Connect ib_async
+        self._ib = IB()
+        self._ib.connect(gateway_host, gateway_port, clientId=1)
+        self.event_queue.put({"type": "status", "state": "connected"})
+
+    def _remove_existing_container(self) -> None:
+        try:
+            old = self._docker.containers.get(self._container_name)
+            old.stop(timeout=5)
+            old.remove(force=True)
+        except DockerNotFound:
+            pass
+
+    def _stop_container(self) -> None:
+        if self._container is not None:
+            try:
+                self._container.stop(timeout=10)
+            except DockerAPIError:
+                pass
+            self._container = None
 
     def disconnect(self) -> None:
         raise NotImplementedError  # Task 9
