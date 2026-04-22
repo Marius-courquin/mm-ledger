@@ -13,7 +13,6 @@ interface PerformanceChartProps {
   periods: string[];
   activePeriod: string;
   onPeriodChange: (period: string) => void;
-  title?: string;
 }
 
 function formatYAxis(value: number): string {
@@ -26,13 +25,12 @@ export function PerformanceChart({
   periods,
   activePeriod,
   onPeriodChange,
-  title = 'Capital NET',
 }: PerformanceChartProps) {
   return (
     <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5">
       {/* Header */}
       <div className="flex items-center justify-between mb-4">
-        <h3 className="text-base font-semibold text-mm-text">{title}</h3>
+        <h3 className="text-base font-semibold text-mm-text">Portfolio Performance</h3>
         <div className="flex items-center gap-1">
           {periods.map((period) => {
             const isActive = period === activePeriod;
