@@ -13,3 +13,4 @@ src/mm_ledger.egg-info/
 frontend/node_modules/
 frontend/dist/
 frontend/tsconfig.tsbuildinfo
+.superpowers/
