@@ -169,13 +169,15 @@ class IBKRWorker(ConnectorWorker):
         self._fetch_and_emit_initial()
 
     def _fetch_and_emit_initial(self) -> None:
-        for fetch_name in ("fetch_accounts", "fetch_balances", "fetch_positions"):
+        for fetch_name in ("fetch_accounts", "fetch_balances", "fetch_positions", "fetch_history_data"):
             try:
                 data = getattr(self, fetch_name)()
                 event_type = fetch_name.replace("fetch_", "")
+                # Taille log : len sur list, nombre de clés sur dict
+                size = len(data) if hasattr(data, "__len__") else 0
                 log.info(
                     "IBKR: connector=%s action=%s count=%d",
-                    self._safe_key(), fetch_name, len(data),
+                    self._safe_key(), fetch_name, size,
                 )
                 self.event_queue.put({"type": event_type, "data": data})
             except Exception as e:
@@ -350,3 +352,85 @@ class IBKRWorker(ConnectorWorker):
 
     def submit_2fa(self, code: str) -> None:
         pass
+
+    def fetch_history_data(self) -> dict:
+        """Historique IBKR : fills (buy/sell) + prix historiques 2 ans par contrat.
+        Cash flows externes = 0 en v1 (pas de Flex Query). Prix et avgCost convertis
+        en base currency via _fx_to_base (déjà utilisé dans fetch_balances/positions)."""
+        if not self._ib:
+            return {"transactions": [], "historical_prices": {}, "account_id": ""}
+
+        from datetime import date, timedelta
+        end = date.today().isoformat()
+        start = (date.today() - timedelta(days=730)).isoformat()
+
+        fx_to_base, base_currency = self._fx_to_base()
+        positions = self._ib.positions()
+        account_id = positions[0].account if positions else ""
+
+        # 1. Executions (trades)
+        fills = []
+        try:
+            fills = self._ib.fills()
+        except Exception as e:
+            log.warning("IBKR: fills() failed: %s", type(e).__name__)
+
+        txs: list[dict] = []
+        contracts_seen: dict[int, object] = {}
+        for f in fills:
+            ex = f.execution
+            ct = f.contract
+            rate = fx_to_base.get(ct.currency, 1.0)
+            qty = float(ex.shares)
+            if ex.side == "SLD":
+                qty = -qty
+            price_base = float(ex.price) * rate
+            amount_base = -qty * price_base
+            tx_date = ex.time.date().isoformat() if hasattr(ex.time, "date") else str(ex.time)[:10]
+            txs.append({
+                "date": tx_date,
+                "kind": "buy" if qty > 0 else "sell",
+                "symbol": ct.symbol,
+                "qty": qty,
+                "price": price_base,
+                "amount": amount_base,
+            })
+            contracts_seen[ct.conId] = ct
+
+        for p in positions:
+            if p.contract.conId not in contracts_seen:
+                contracts_seen[p.contract.conId] = p.contract
+
+        # 2. Historical prices par contrat (converti en base currency)
+        historical_prices: dict[str, list[dict]] = {}
+        for conId, contract in contracts_seen.items():
+            try:
+                bars = self._ib.reqHistoricalData(
+                    contract, endDateTime="", durationStr="2 Y",
+                    barSizeSetting="1 day", whatToShow="TRADES",
+                    useRTH=True, formatDate=1,
+                )
+            except Exception as e:
+                log.warning("IBKR: hist data failed for %s: %s", contract.symbol, type(e).__name__)
+                continue
+            rate = fx_to_base.get(contract.currency, 1.0)
+            historical_prices[contract.symbol] = [
+                {
+                    "date": bar.date.isoformat() if hasattr(bar.date, "isoformat") else str(bar.date),
+                    "close": float(bar.close) * rate,
+                }
+                for bar in bars
+            ]
+
+        log.info(
+            "IBKR: history_data account=%s txs=%d symbols=%d",
+            account_id, len(txs), len(historical_prices),
+        )
+        return {
+            "account_id": account_id,
+            "transactions": txs,
+            "historical_prices": historical_prices,
+            "start_date": start,
+            "end_date": end,
+            "currency": base_currency,
+        }
