@@ -5,6 +5,9 @@ services:
       - "8000:8000"
     volumes:
       - data:/app/data
+      - /var/run/docker.sock:/var/run/docker.sock
+    networks:
+      - mm-ledger-net
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "python3", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/api/auth/status')"]
@@ -62,22 +65,11 @@ services:
       TOKEN: ${DUCKDNS_TOKEN:-}
     restart: unless-stopped
 
-  # ── IB Gateway (optionnel) ─────────────────────────────────────────────────
-  ib-gateway:
-    image: ghcr.io/gnzsnz/ib-gateway:latest
-    profiles: ["ibkr"]
-    network_mode: host
-    environment:
-      TWS_USERID: ${IBKR_USERNAME:-}
-      TWS_PASSWORD: ${IBKR_PASSWORD:-}
-      TRADING_MODE: ${IBKR_TRADING_MODE:-live}
-      READ_ONLY_API: "yes"
-      TWOFA_TIMEOUT_ACTION: restart
-    volumes:
-      - ib-gateway-data:/opt/ibc/config
-    restart: unless-stopped
-
 volumes:
   data:
   wireguard:
-  ib-gateway-data:
+
+networks:
+  mm-ledger-net:
+    name: mm-ledger-net
+    driver: bridge
