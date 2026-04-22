@@ -83,7 +83,7 @@ cd frontend && bun run build        # output static/ consommé par FastAPI en pr
 | Type (`ConnectorType`) | Lib | État | Particularités |
 |---|---|---|---|
 | `trade_republic` | `websockets.sync.client` + Selenium | OK | WAF bypass Selenium, WS live ticker, OCR pour 2FA |
-| `ibkr` | `ib_async` | **À réparer** | Nécessite `ib-gateway` container (profile Docker `ibkr`, port 4001), read-only |
+| `ibkr` | `ib_async` + `docker` SDK | OK | App spawn `ib-gateway` à la volée avec creds du vault, port binding `127.0.0.1` en dev, réseau interne en prod, digest pinné |
 | `woob_bank` | `woob` | OK | Banques FR (Banque Populaire, etc.), 2FA via `submit_2fa` |
 | `banking` | Enable Banking PSD2 (récent) | Nouveau | Open Banking EU — cf. `src/api/banking.py`, commit `de9372b` |
 
@@ -99,7 +99,7 @@ Le worker vit dans un `multiprocessing.Process`, dialogue via `cmd_queue` / `eve
 
 ## Gotchas
 
-- **IBKR** : la connexion se fait vers `ib-gateway` container (réseau host). Le container doit être **démarré par l'app** avec les creds injectées depuis le vault au moment du `connect` (voir règle vault-first ci-dessous). L'API côté mm-ledger est en read-only (`READ_ONLY_API=yes`).
+- **IBKR** : l'app orchestre le container `ib-gateway` via le SDK docker au moment du `connect`. Creds (username/password/trading_mode) dans le vault chiffré — jamais en `.env`. Démarrage 60-90s (état intermédiaire `starting_gateway`). Voir `docs/superpowers/specs/2026-04-22-ibkr-vault-first-design.md`.
 - **Trade Republic** : Selenium nécessaire pour bypass WAF (Cloudflare). Le worker monkeypatch des headers WS.
 - **Scheduler** : daily job sur tous les workers connectés (23h) — si un worker est down, le snapshot de ce compte est absent ce jour-là.
 - **Front auto-refresh** : le dashboard poll toutes les 5 s quand un worker est `connected` mais portfolio vide. Utile pour voir les positions arriver après login.

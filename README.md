@@ -64,6 +64,29 @@ pytest tests/ -v
 4. Se connecter au connecteur (2FA si necessaire)
 5. Consulter le portfolio
 
+## IBKR — flux de connexion
+
+Le connecteur IBKR n'a **plus besoin** de remplir `.env` avec `IBKR_USERNAME` / `IBKR_PASSWORD`.
+Les credentials sont stockés dans le vault chiffré de l'utilisateur (SQLCipher, déverrouillé au login).
+
+Flow :
+1. Deverrouiller le vault.
+2. Créer un connecteur IBKR → saisir username / password / trading_mode (live ou paper).
+3. Cliquer « Se connecter » — l'app spawn automatiquement le container `ib-gateway` avec les creds injectés en env, attend 60-90s le démarrage, puis se connecte via `ib_async`.
+4. Au disconnect / shutdown, le container est stoppé et supprimé (auto_remove).
+
+Pré-requis : le docker daemon doit être accessible depuis l'app (mount `/var/run/docker.sock`).
+C'est déjà le cas dans `docker-compose.yml`.
+
+### Trust boundary
+
+L'app monte `/var/run/docker.sock` pour orchestrer `ib-gateway`. Cela donne à l'app
+des droits équivalents à root sur l'hôte. Ce pattern était déjà utilisé par
+`watchtower`. Si vous exposez l'app sur un réseau non-maîtrisé, considérez :
+- un reverse proxy avec auth forte devant `:8000`,
+- un VPN (profile `vpn` de `docker-compose.yml` avec WireGuard),
+- restreindre les sources autorisées à se connecter.
+
 ## Architecture
 
 ```
