@@ -1,4 +1,4 @@
-from src.performance import reconstruct_timeline, TxEvent, compute_twr
+from src.performance import reconstruct_timeline, TxEvent, compute_twr, aggregate_timelines
 
 
 def _tx(date: str, kind: str, **kw) -> TxEvent:
@@ -118,3 +118,33 @@ def test_twr_handles_zero_base():
     assert curve[0]["cum_pct"] == 0.0
     assert curve[1]["cum_pct"] == 0.0
     assert abs(curve[2]["cum_pct"] - 10.0) < 0.01
+
+
+def test_aggregate_two_connectors_sum_values():
+    t1 = [
+        {"date": "2026-01-01", "cash": 100, "positions_value": 500, "total_value": 600, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 100, "positions_value": 550, "total_value": 650, "cash_flow_external": 0},
+    ]
+    t2 = [
+        {"date": "2026-01-01", "cash": 50, "positions_value": 300, "total_value": 350, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 50, "positions_value": 330, "total_value": 380, "cash_flow_external": 0},
+    ]
+    merged = aggregate_timelines([t1, t2])
+    assert len(merged) == 2
+    assert merged[0]["total_value"] == 950
+    assert merged[1]["total_value"] == 1030
+
+
+def test_aggregate_handles_different_date_ranges():
+    t1 = [
+        {"date": "2026-01-01", "cash": 0, "positions_value": 100, "total_value": 100, "cash_flow_external": 0},
+        {"date": "2026-01-02", "cash": 0, "positions_value": 110, "total_value": 110, "cash_flow_external": 0},
+    ]
+    t2 = [
+        {"date": "2026-01-02", "cash": 0, "positions_value": 200, "total_value": 200, "cash_flow_external": 200},
+    ]
+    merged = aggregate_timelines([t1, t2])
+    assert [m["date"] for m in merged] == ["2026-01-01", "2026-01-02"]
+    assert merged[0]["total_value"] == 100
+    assert merged[1]["total_value"] == 310
+    assert merged[1]["cash_flow_external"] == 200

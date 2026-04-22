@@ -127,3 +127,40 @@ def compute_twr(timeline: list[dict]) -> list[dict]:
         })
 
     return curve
+
+
+def aggregate_timelines(timelines: list[list[dict]]) -> list[dict]:
+    """Fusionne plusieurs timelines (1 par connecteur) en sommant les champs numériques
+    par date. Avant le premier point d'une timeline donnée, elle contribue à 0."""
+    if not timelines:
+        return []
+    all_dates = sorted({pt["date"] for t in timelines for pt in t})
+    if not all_dates:
+        return []
+
+    per_timeline_by_date = [
+        {pt["date"]: pt for pt in t} for t in timelines
+    ]
+
+    merged = []
+    for d in all_dates:
+        cash = 0.0
+        positions_value = 0.0
+        total_value = 0.0
+        cf_ext = 0.0
+        for by_date in per_timeline_by_date:
+            pt = by_date.get(d)
+            if pt is None:
+                continue
+            cash += pt["cash"]
+            positions_value += pt["positions_value"]
+            total_value += pt["total_value"]
+            cf_ext += pt.get("cash_flow_external", 0.0)
+        merged.append({
+            "date": d,
+            "cash": round(cash, 4),
+            "positions_value": round(positions_value, 4),
+            "total_value": round(total_value, 4),
+            "cash_flow_external": round(cf_ext, 4),
+        })
+    return merged
