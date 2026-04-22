@@ -22,7 +22,9 @@ IBKR_GATEWAY_IMAGE = "ghcr.io/gnzsnz/ib-gateway@sha256:b248e4dad68cc1de8dd1905ea
 IBKR_NETWORK_NAME = "mm-ledger-net"
 IBKR_GATEWAY_LIVE_PORT = 4001
 IBKR_GATEWAY_PAPER_PORT = 4002
-IBKR_GATEWAY_START_TIMEOUT = 90  # seconds
+IBKR_GATEWAY_START_TIMEOUT = 90  # seconds — port ouvert par le Java
+IBKR_API_AUTH_TIMEOUT = 180       # seconds — ib_async handshake (2FA inclus)
+IBKR_API_RETRY_DELAY = 5          # seconds entre 2 tentatives IB.connect()
 
 
 class IBKRWorker(ConnectorWorker):
@@ -85,12 +87,17 @@ class IBKRWorker(ConnectorWorker):
         trading_mode = credentials["trading_mode"]
         gateway_host, gateway_port = self._gateway_endpoint(trading_mode)
         if self._dev_mode():
-            # Dev : bridge docker par défaut + port publié sur loopback hôte.
-            # (Le network mm-ledger-net n'existe que si `docker compose up` a été lancé.)
-            run_kwargs["ports"] = {f"{gateway_port}/tcp": ("127.0.0.1", gateway_port)}
+            # Dev : network_mode=host. Raison : IBC configure TrustedIPs=127.0.0.1 par
+            # défaut. En bridge docker, la source IP vue par ib-gateway serait l'IP du
+            # bridge (172.x), rejetée au niveau applicatif → timeout silencieux sur le
+            # handshake ib_async. En host mode, le container partage la stack réseau de
+            # l'hôte → la source reste 127.0.0.1, acceptée.
+            run_kwargs["network_mode"] = "host"
         else:
-            # Prod : network docker dédié, aucun port publié sur l'hôte.
+            # Prod : network docker dédié, aucun port publié sur l'hôte. ib-gateway
+            # acceptera les connexions depuis le même network via TRUSTED_IPS (widened).
             run_kwargs["network"] = IBKR_NETWORK_NAME
+            run_kwargs["environment"]["TRUSTED_IPS"] = "0.0.0.0"
 
         self._container = self._docker.containers.run(**run_kwargs)
 
@@ -109,9 +116,27 @@ class IBKRWorker(ConnectorWorker):
                 f"Consulter 'docker logs {self._container_name}'."
             )
 
-        # 4. Connect ib_async
+        # 4. Connect ib_async (retry : le handshake peut échouer tant que la 2FA mobile
+        #    n'est pas validée ou que IBC n'est pas prêt).
+        # Note : on ne passe PAS en state="waiting_2fa" ici — ce state affiche une modal
+        # de saisie code dans le front (pour Trade Republic). Pour IBKR le 2FA est mobile.
         self._ib = IB()
-        self._ib.connect(gateway_host, gateway_port, clientId=1)
+        auth_deadline = time.time() + IBKR_API_AUTH_TIMEOUT
+        last_err: Exception | None = None
+        while time.time() < auth_deadline:
+            try:
+                self._ib.connect(gateway_host, gateway_port, clientId=1, timeout=10)
+                break
+            except Exception as e:
+                last_err = e
+                time.sleep(IBKR_API_RETRY_DELAY)
+        else:
+            self._stop_container()
+            raise TimeoutError(
+                f"ib_async n'a pas pu s'authentifier après {IBKR_API_AUTH_TIMEOUT}s. "
+                f"Vérifier l'approbation 2FA sur mobile ou les credentials IBKR."
+            )
+
         log.info("IBKR: connector=%s action=connect result=ok", self._safe_key())
         self.event_queue.put({"type": "status", "state": "connected"})
 

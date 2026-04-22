@@ -64,9 +64,10 @@ def test_connect_paper_mode_uses_port_4002():
     with patch.object(IBKRWorker, "_dev_mode", return_value=True), \
          _patch_connect_dependencies() as ctx:
         w.connect(paper_creds)
+    # Dev mode = host network, pas de port publié
     kwargs = ctx["docker_client"].containers.run.call_args.kwargs
-    assert kwargs["ports"] == {"4002/tcp": ("127.0.0.1", 4002)}
-    ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4002, clientId=1)
+    assert kwargs.get("network_mode") == "host"
+    ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4002, clientId=1, timeout=10)
 
 
 def _creds() -> dict:
@@ -135,20 +136,20 @@ def test_connect_passes_hardening_flags_to_container():
     assert kwargs["environment"]["READ_ONLY_API"] == "yes"
 
 
-def test_connect_dev_mode_publishes_port_on_localhost_without_network():
+def test_connect_dev_mode_uses_host_network():
+    """En dev, network_mode=host — nécessaire pour que ib-gateway voie 127.0.0.1
+    comme source IP (TrustedIPs=127.0.0.1 par défaut dans IBC)."""
     w = _make_worker("u1:ib")
     with patch.object(IBKRWorker, "_dev_mode", return_value=True), \
          _patch_connect_dependencies() as ctx:
         w.connect(_creds())
     kwargs = ctx["docker_client"].containers.run.call_args.kwargs
-    assert kwargs.get("ports") == {"4001/tcp": ("127.0.0.1", 4001)}
-    # En dev, pas de network custom (bridge par défaut) — mm-ledger-net
-    # n'existe qu'une fois `docker compose up` lancé, ce qui n'est pas le cas
-    # quand on tourne via `./start.sh` en local.
-    assert "network" not in kwargs or not kwargs["network"]
+    assert kwargs.get("network_mode") == "host"
+    # En host mode, pas de port publié (container share host net)
+    assert "ports" not in kwargs or not kwargs["ports"]
 
 
-def test_connect_prod_mode_no_port_but_internal_network():
+def test_connect_prod_mode_internal_network_with_trusted_ips():
     w = _make_worker("u1:ib")
     with patch.object(IBKRWorker, "_dev_mode", return_value=False), \
          _patch_connect_dependencies() as ctx:
@@ -156,6 +157,8 @@ def test_connect_prod_mode_no_port_but_internal_network():
     kwargs = ctx["docker_client"].containers.run.call_args.kwargs
     assert "ports" not in kwargs or not kwargs["ports"]
     assert kwargs["network"] == "mm-ledger-net"
+    # Prod : TRUSTED_IPS élargi pour accepter les connexions depuis mm-ledger-net
+    assert kwargs["environment"]["TRUSTED_IPS"] == "0.0.0.0"
 
 
 def test_connect_emits_starting_gateway_before_containers_run():
@@ -189,7 +192,7 @@ def test_connect_calls_ib_connect_with_correct_endpoint():
     with patch.object(IBKRWorker, "_dev_mode", return_value=True), \
          _patch_connect_dependencies() as ctx:
         w.connect(_creds())
-    ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4001, clientId=1)
+    ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4001, clientId=1, timeout=10)
 
 
 def test_connect_removes_orphan_container_before_spawn():
@@ -278,11 +281,20 @@ def test_disconnect_logs_audit_event(caplog):
 
 
 def test_connect_bad_creds_error_does_not_leak():
+    """Mauvais creds : IB.connect raise en boucle jusqu'à IBKR_API_AUTH_TIMEOUT,
+    puis on raise TimeoutError sans leak de creds dans aucun message."""
     w = _make_worker("u1:ib")
+    counter = [0]
+
+    def fake_time():
+        counter[0] += 10
+        return counter[0]
+
     with patch("src.connectors.ibkr.docker") as mock_docker, \
          patch("src.connectors.ibkr.IB") as mock_ib_cls, \
          patch("src.connectors.ibkr.socket.create_connection"), \
-         patch("src.connectors.ibkr.time.sleep"):
+         patch("src.connectors.ibkr.time.sleep"), \
+         patch("src.connectors.ibkr.time.time", side_effect=fake_time):
         client = MagicMock()
         client.containers.get.side_effect = _docker_errors_not_found()
         client.containers.run.return_value = MagicMock()
@@ -292,8 +304,11 @@ def test_connect_bad_creds_error_does_not_leak():
         mock_ib_cls.return_value = ib
 
         import pytest as _pt
-        with _pt.raises(ConnectionError) as excinfo:
+        with _pt.raises(TimeoutError) as excinfo:
             w.connect(_creds())
         msg = str(excinfo.value)
+        # Anti-leak : ni username ni password dans le message final
         assert "charlie" not in msg
         assert "s3cret" not in msg
+        # IB.connect a été retry plusieurs fois
+        assert ib.connect.call_count >= 2
