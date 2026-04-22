@@ -9,3 +9,7 @@ export function getNetWorthHistory(from?: string) {
   if (from) params.from = from;
   return api.get('/net-worth/history', params);
 }
+
+export function getInvestmentsHistory() {
+  return api.get('/net-worth/investments/history');
+}

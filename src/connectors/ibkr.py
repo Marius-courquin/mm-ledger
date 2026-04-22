@@ -169,7 +169,7 @@ class IBKRWorker(ConnectorWorker):
         self._fetch_and_emit_initial()
 
     def _fetch_and_emit_initial(self) -> None:
-        for fetch_name in ("fetch_accounts", "fetch_balances", "fetch_positions"):
+        for fetch_name in ("fetch_accounts", "fetch_balances", "fetch_positions", "fetch_history"):
             try:
                 data = getattr(self, fetch_name)()
                 event_type = fetch_name.replace("fetch_", "")
@@ -347,6 +347,51 @@ class IBKRWorker(ConnectorWorker):
 
     def fetch_transactions(self) -> list[dict]:
         return []
+
+    def fetch_history(self) -> list[dict]:
+        """Historique journalier de la valeur du portefeuille en base currency.
+
+        Pour chaque position actuelle : reqHistoricalData (2 ans de bars jour),
+        puis par date on somme qty × close × fx_to_base. Retourne
+        [{date: 'YYYY-MM-DD', value: float}] trié. Ne reflète PAS les achats /
+        ventes historiques (on utilise les qty actuelles projetées rétroactivement)
+        — c'est 'comment mon portefeuille actuel aurait performé', approximation
+        acceptable pour suivre la tendance sans reconstruire le timeline de trades."""
+        if not self._ib:
+            return []
+        positions = self._ib.positions()
+        fx_to_base, _base_ccy = self._fx_to_base()
+        by_date: dict[str, float] = {}
+        errors = 0
+        for p in positions:
+            qty = float(p.position)
+            if qty == 0:
+                continue
+            rate = fx_to_base.get(p.contract.currency, 1.0)
+            try:
+                bars = self._ib.reqHistoricalData(
+                    p.contract,
+                    endDateTime="",
+                    durationStr="2 Y",
+                    barSizeSetting="1 day",
+                    whatToShow="TRADES",
+                    useRTH=True,
+                    formatDate=1,
+                )
+            except Exception as e:
+                log.warning("IBKR: reqHistoricalData failed for %s: %s", p.contract.symbol, type(e).__name__)
+                errors += 1
+                continue
+            for bar in bars:
+                # bar.date est un datetime.date ; on le stringifie en ISO
+                date_str = bar.date.isoformat() if hasattr(bar.date, "isoformat") else str(bar.date)
+                value = qty * float(bar.close) * rate
+                by_date[date_str] = by_date.get(date_str, 0.0) + value
+        log.info(
+            "IBKR: history dates=%d positions=%d errors=%d",
+            len(by_date), len(positions), errors,
+        )
+        return [{"date": d, "value": round(v, 2)} for d, v in sorted(by_date.items())]
 
     def submit_2fa(self, code: str) -> None:
         pass

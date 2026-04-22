@@ -120,3 +120,26 @@ def get_net_worth_history(
         {"date": r.date, "total": r.total, "bank_total": r.bank_total, "investments_total": r.investments_total}
         for r in rows
     ]
+
+
+@router.get("/investments/history")
+def get_investments_history(user: AuthUser = Depends(get_current_user)):
+    """Historique agrégé de la valeur des investissements (somme des CTO),
+    construit depuis live_data de chaque worker (IBKR fournit via
+    reqHistoricalData, TR via son API historique à venir). Plus dense que
+    les snapshots journaliers — couvre ~2 ans dès le premier connect."""
+    all_data = deps.manager.get_user_live_data(user.id)
+    by_date: dict[str, float] = {}
+    for _cid, data in all_data.items():
+        for pt in data.get("history", []):
+            if not isinstance(pt, dict):
+                continue
+            d = pt.get("date")
+            v = pt.get("value")
+            if d is None or v is None:
+                continue
+            by_date[d] = by_date.get(d, 0.0) + float(v)
+    return [
+        {"date": d, "value": round(v, 2)}
+        for d, v in sorted(by_date.items())
+    ]
