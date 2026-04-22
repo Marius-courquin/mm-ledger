@@ -175,10 +175,12 @@ class TradeRepublicWorker(ConnectorWorker):
             log.error(f"2FA error: {e}")
             self.event_queue.put({"type": "error", "message": str(e)})
 
-    # Map TR productType to human-readable account labels
+    # Map TR productType to human-readable account labels.
+    # Note : TR appelle "TAX_WRAPPER" son PEA (tax-advantaged wrapper) — on le renomme côté UI.
     PRODUCT_LABELS = {
         "DEFAULT": "CTO",
-        "PEA": "PEA",
+        "TAX_WRAPPER": "PEA",
+        "PEA": "PEA",  # garde-fou si TR change son schéma un jour
         "CRYPTO": "Crypto",
         "PRIVATE_EQUITY": "Private Equity",
     }
