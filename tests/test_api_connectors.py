@@ -64,10 +64,21 @@ def test_delete_connector(client):
     assert len(r.json()) == 0
 
 
-def test_get_connector_types(client):
-    r = client.get("/api/connectors/types")
-    assert r.status_code == 200
-    types = {t["type"] for t in r.json()}
-    assert "trade_republic" in types
-    assert "ibkr" in types
-    assert "woob_bank" in types
+def test_get_connector_types_includes_ibkr_vault_fields(client):
+    response = client.get("/api/connectors/types")
+    assert response.status_code == 200
+    types = response.json()
+    ibkr = next((t for t in types if t["type"] == "ibkr"), None)
+    assert ibkr is not None
+
+    names = {f["name"] for f in ibkr["credential_fields"]}
+    assert names == {"username", "password", "trading_mode"}
+
+    pwd = next(f for f in ibkr["credential_fields"] if f["name"] == "password")
+    assert pwd["type"] == "password"
+
+    tm = next(f for f in ibkr["credential_fields"] if f["name"] == "trading_mode")
+    assert tm["type"] == "select"
+    assert {o["value"] for o in tm["options"]} == {"live", "paper"}
+
+    assert ibkr["config_fields"] == []

@@ -21,11 +21,19 @@ CONNECTOR_TYPES = [
     },
     {
         "type": "ibkr", "label": "Interactive Brokers",
-        "credential_fields": [],
-        "config_fields": [
-            {"name": "host", "type": "text", "required": True, "default": "127.0.0.1"},
-            {"name": "port", "type": "number", "required": True, "default": 4001},
+        "credential_fields": [
+            {"name": "username", "type": "text", "required": True},
+            {"name": "password", "type": "password", "required": True},
+            {
+                "name": "trading_mode", "type": "select", "required": True,
+                "options": [
+                    {"value": "live", "label": "Live"},
+                    {"value": "paper", "label": "Paper"},
+                ],
+                "default": "live",
+            },
         ],
+        "config_fields": [],
         "supports_2fa": False, "supports_streaming": True,
     },
     {
