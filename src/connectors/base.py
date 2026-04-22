@@ -29,13 +29,6 @@ class ConnectorWorker(ABC):
     @abstractmethod
     def submit_2fa(self, code: str) -> None: ...
 
-    def fetch_history(self) -> list[dict]:
-        """Historique journalier de la valeur du portefeuille (base currency).
-        Retour : [{date: 'YYYY-MM-DD', value: float}]. [] par défaut — les
-        connecteurs qui exposent un historique natif (brokers, via API
-        historique du type reqHistoricalData) le surchargent."""
-        return []
-
     def run(self):
         while True:
             cmd = self.cmd_queue.get()
@@ -51,7 +44,6 @@ class ConnectorWorker(ABC):
                     "fetch_positions": self.fetch_positions,
                     "fetch_balances": self.fetch_balances,
                     "fetch_transactions": self.fetch_transactions,
-                    "fetch_history": self.fetch_history,
                     "submit_2fa": lambda: self.submit_2fa(cmd["code"]),
                 }[cmd["type"]]
                 data = handler()

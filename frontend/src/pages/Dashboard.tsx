@@ -6,7 +6,7 @@ import { AccountRow } from '@/components/AccountRow';
 import { useApp } from '@/context/AppContext';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
 import { getPortfolio } from '@/api/portfolio';
-import { getNetWorth, getNetWorthHistory, getInvestmentsHistory } from '@/api/networth';
+import { getNetWorth, getNetWorthHistory } from '@/api/networth';
 import { getCashflow } from '@/api/cashflow';
 import { formatCurrency, formatPercent, formatDate, formatShortDate, getGreeting } from '@/lib/format';
 import type { Account, Balance, Portfolio } from '@/lib/types';
@@ -81,7 +81,6 @@ export function Dashboard() {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [netWorth, setNetWorth] = useState<NetWorthData | null>(null);
   const [netWorthHistory, setNetWorthHistory] = useState<NetWorthHistoryPoint[]>([]);
-  const [investmentsHistory, setInvestmentsHistory] = useState<{ date: string; value: number }[]>([]);
   const [cashflow, setCashflow] = useState<CashflowData | null>(null);
   const [cashflowPeriod, setCashflowPeriod] = useState<string>('1M');
   const [includeInvestments, setIncludeInvestments] = useState(true);
@@ -93,19 +92,17 @@ export function Dashboard() {
   const fetchAllData = async () => {
     try {
       const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
-      const [accts, port, nw, nwHistory, invHistory] = await Promise.all([
+      const [accts, port, nw, nwHistory] = await Promise.all([
         getAccounts(),
         getPortfolio(),
         getNetWorth() as Promise<NetWorthData>,
         getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
-        getInvestmentsHistory() as Promise<{ date: string; value: number }[]>,
       ]);
 
       setAccounts(accts);
       setPortfolio(port);
       setNetWorth(nw);
       setNetWorthHistory(nwHistory);
-      setInvestmentsHistory(invHistory);
 
       const balanceMap: Record<string, Balance> = {};
       const balanceResults = await Promise.allSettled(
@@ -182,17 +179,13 @@ export function Dashboard() {
     [filteredHistory],
   );
 
-  const investmentsChartData = useMemo(() => {
-    const days = periodToDays(activePeriod);
-    const cutoff = days ? Date.now() - days * 86400000 : 0;
-    return investmentsHistory
-      .filter((pt) => new Date(pt.date).getTime() >= cutoff)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((pt) => ({
-        date: formatShortDate(pt.date),
-        value: Math.round(pt.value * 100) / 100,
-      }));
-  }, [investmentsHistory, activePeriod]);
+  const investmentsChartData = useMemo(
+    () => filteredHistory.map((pt) => ({
+      date: formatShortDate(pt.date),
+      value: Math.round((pt.investments_total ?? 0) * 100) / 100,
+    })),
+    [filteredHistory],
+  );
 
   // Group accounts by connector
   const connectorAccounts = useMemo(() => {

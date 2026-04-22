@@ -53,7 +53,7 @@ class ConnectorManager:
         proc.start()
         handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
         self._workers[connector_id] = handle
-        self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": [], "transactions": [], "history": []}
+        self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
         cmd_q.put({"type": "connect", "credentials": credentials})
 
     def stop(self, connector_id: str):
@@ -90,10 +90,10 @@ class ConnectorManager:
                     elif evt_type == "error":
                         handle.state = "error"
                         handle.detail = event.get("message")
-                    elif evt_type in ("accounts", "balances", "positions", "transactions", "history"):
+                    elif evt_type in ("accounts", "balances", "positions", "transactions"):
                         # Cache live data
                         if cid not in self.live_data:
-                            self.live_data[cid] = {"accounts": [], "balances": [], "positions": [], "transactions": [], "history": []}
+                            self.live_data[cid] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
                         self.live_data[cid][evt_type] = event.get("data", [])
 
                     events.append(event)
