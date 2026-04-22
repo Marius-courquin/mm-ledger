@@ -181,3 +181,43 @@ def test_connect_timeout_emits_error_without_creds():
         # Anti-leak: aucun credential dans le message d'erreur
         assert "charlie" not in msg
         assert "s3cret" not in msg
+
+
+def test_disconnect_stops_ib_and_container():
+    w = _make_worker("u1:ib")
+    with _patch_connect_dependencies() as ctx:
+        w.connect(_creds())
+    w.disconnect()
+    ctx["ib"].disconnect.assert_called_once()
+    ctx["container"].stop.assert_called_once()
+
+
+def test_disconnect_idempotent_when_never_connected():
+    w = _make_worker("u1:ib")
+    # Pas de connect avant
+    w.disconnect()  # Ne doit pas lever
+
+
+def test_connect_logs_audit_event_without_creds(caplog):
+    import logging as _log
+    w = _make_worker("u1:ib")
+    with _patch_connect_dependencies() as _ctx:
+        with caplog.at_level(_log.INFO, logger="src.connectors.ibkr"):
+            w.connect(_creds())
+    audit_lines = [r.getMessage() for r in caplog.records if "IBKR" in r.getMessage()]
+    assert any("action=connect" in line for line in audit_lines)
+    # Anti-leak
+    for line in audit_lines:
+        assert "charlie" not in line
+        assert "s3cret" not in line
+
+
+def test_disconnect_logs_audit_event(caplog):
+    import logging as _log
+    w = _make_worker("u1:ib")
+    with _patch_connect_dependencies() as _ctx:
+        w.connect(_creds())
+    with caplog.at_level(_log.INFO, logger="src.connectors.ibkr"):
+        w.disconnect()
+    audit_lines = [r.getMessage() for r in caplog.records if "IBKR" in r.getMessage()]
+    assert any("action=disconnect" in line for line in audit_lines)

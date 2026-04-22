@@ -54,6 +54,7 @@ class IBKRWorker(ConnectorWorker):
     # ── contract methods ────────────────────────────────────────────────
 
     def connect(self, credentials: dict) -> None:
+        log.info("IBKR: connector=%s action=connect result=start", self._safe_key())
         self._docker = docker.from_env()
 
         # 1. Nettoyage d'un éventuel container orphelin
@@ -103,6 +104,7 @@ class IBKRWorker(ConnectorWorker):
         # 4. Connect ib_async
         self._ib = IB()
         self._ib.connect(gateway_host, gateway_port, clientId=1)
+        log.info("IBKR: connector=%s action=connect result=ok", self._safe_key())
         self.event_queue.put({"type": "status", "state": "connected"})
 
     def _remove_existing_container(self) -> None:
@@ -122,7 +124,14 @@ class IBKRWorker(ConnectorWorker):
             self._container = None
 
     def disconnect(self) -> None:
-        raise NotImplementedError  # Task 9
+        try:
+            if self._ib is not None and self._ib.isConnected():
+                self._ib.disconnect()
+        except Exception:
+            pass
+        self._ib = None
+        self._stop_container()
+        log.info("IBKR: connector=%s action=disconnect result=ok", self._safe_key())
 
     def fetch_accounts(self) -> list[dict]:
         if not self._ib:
