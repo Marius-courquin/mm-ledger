@@ -221,3 +221,25 @@ def test_disconnect_logs_audit_event(caplog):
         w.disconnect()
     audit_lines = [r.getMessage() for r in caplog.records if "IBKR" in r.getMessage()]
     assert any("action=disconnect" in line for line in audit_lines)
+
+
+def test_connect_bad_creds_error_does_not_leak():
+    w = _make_worker("u1:ib")
+    with patch("src.connectors.ibkr.docker") as mock_docker, \
+         patch("src.connectors.ibkr.IB") as mock_ib_cls, \
+         patch("src.connectors.ibkr.socket.create_connection"), \
+         patch("src.connectors.ibkr.time.sleep"):
+        client = MagicMock()
+        client.containers.get.side_effect = _docker_errors_not_found()
+        client.containers.run.return_value = MagicMock()
+        mock_docker.from_env.return_value = client
+        ib = MagicMock()
+        ib.connect.side_effect = ConnectionError("auth failed")
+        mock_ib_cls.return_value = ib
+
+        import pytest as _pt
+        with _pt.raises(ConnectionError) as excinfo:
+            w.connect(_creds())
+        msg = str(excinfo.value)
+        assert "charlie" not in msg
+        assert "s3cret" not in msg
