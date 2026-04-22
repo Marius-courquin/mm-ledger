@@ -140,6 +140,25 @@ class IBKRWorker(ConnectorWorker):
         log.info("IBKR: connector=%s action=connect result=ok", self._safe_key())
         self.event_queue.put({"type": "status", "state": "connected"})
 
+        # 5. Fetch initial (accounts/balances/positions) pour peupler le live_data.
+        # IBKR n'a pas de WebSocket push — contrairement à TR — donc on déclenche
+        # explicitement les fetches après connect. Les échecs individuels sont loggés
+        # mais ne font pas échouer la connexion (le scheduler re-tentera à 23h).
+        self._ib.sleep(2)  # laisse ib_async accumuler managedAccounts() / accountValues()
+        self._fetch_and_emit_initial()
+
+    def _fetch_and_emit_initial(self) -> None:
+        for fetch_name in ("fetch_accounts", "fetch_balances", "fetch_positions"):
+            try:
+                data = getattr(self, fetch_name)()
+                event_type = fetch_name.replace("fetch_", "")
+                self.event_queue.put({"type": event_type, "data": data})
+            except Exception as e:
+                log.warning(
+                    "IBKR: connector=%s action=%s result=error err=%s",
+                    self._safe_key(), fetch_name, type(e).__name__,
+                )
+
     def _remove_existing_container(self) -> None:
         try:
             old = self._docker.containers.get(self._container_name)
