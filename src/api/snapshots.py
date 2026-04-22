@@ -46,6 +46,15 @@ def list_snapshots(
     ]
 
 
+@router.post("/now", status_code=202)
+async def snapshot_now(user: AuthUser = Depends(get_current_user)):
+    """Exécute immédiatement le job daily_snapshot (écrit dans balance_snapshots
+    et net_worth_snapshots). Utile pour peupler le graphe sans attendre 23h."""
+    from src.scheduler import daily_snapshot
+    await daily_snapshot()
+    return {"status": "ok"}
+
+
 @router.post("/trigger", status_code=202)
 def trigger_snapshot(user: AuthUser = Depends(get_current_user)):
     """Trigger a manual fetch on all connected workers."""
