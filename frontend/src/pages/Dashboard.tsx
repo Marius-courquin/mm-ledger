@@ -1,27 +1,24 @@
 import { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
-import { PerformanceChart } from '@/components/PerformanceChart';
+import { PortfolioPerfChart } from '@/components/PortfolioPerfChart';
+import { getPerformanceHistory, type PerfHistory } from '@/api/performance';
 import { AccountRow } from '@/components/AccountRow';
 import { useApp } from '@/context/AppContext';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
 import { getPortfolio } from '@/api/portfolio';
-import { getNetWorth, getNetWorthHistory } from '@/api/networth';
+import { getNetWorth } from '@/api/networth';
 import { getCashflow } from '@/api/cashflow';
-import { formatCurrency, formatPercent, formatDate, formatShortDate, getGreeting } from '@/lib/format';
+import { formatCurrency, formatPercent, formatDate, getGreeting } from '@/lib/format';
 import type { Account, Balance, Portfolio } from '@/lib/types';
 
 const PERIODS = ['1W', '1M', '3M', '1Y', 'All'] as const;
 
-function periodToDays(period: string): number | null {
-  switch (period) {
-    case '1W': return 7;
-    case '1M': return 30;
-    case '3M': return 90;
-    case '1Y': return 365;
-    case 'All': return null;
-    default: return 90;
-  }
+function periodLabelFr(p: string): string {
+  const map: Record<string, string> = {
+    '1W': '7 jours', '1M': '1 mois', '3M': '3 mois', '1Y': '1 an', 'All': 'tout',
+  };
+  return map[p] ?? p;
 }
 
 const connectorIcons: Record<string, { icon: typeof TrendingUp; bg: string }> = {
@@ -49,13 +46,6 @@ interface NetWorthData {
   breakdown: { name: string; value: number; source: string; type: string }[];
 }
 
-interface NetWorthHistoryPoint {
-  date: string;
-  total: number;
-  bank_total: number;
-  investments_total: number;
-}
-
 const CASHFLOW_PERIODS = ['1W', '1M', '3M', '6M', '1Y', 'Max'] as const;
 
 interface CashflowData {
@@ -80,7 +70,7 @@ export function Dashboard() {
   const [balances, setBalances] = useState<Record<string, Balance>>({});
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [netWorth, setNetWorth] = useState<NetWorthData | null>(null);
-  const [netWorthHistory, setNetWorthHistory] = useState<NetWorthHistoryPoint[]>([]);
+  const [perfHistory, setPerfHistory] = useState<PerfHistory | null>(null);
   const [cashflow, setCashflow] = useState<CashflowData | null>(null);
   const [cashflowPeriod, setCashflowPeriod] = useState<string>('1M');
   const [includeInvestments, setIncludeInvestments] = useState(true);
@@ -91,18 +81,15 @@ export function Dashboard() {
   // Fetch all dashboard data
   const fetchAllData = async () => {
     try {
-      const fromDate = new Date(Date.now() - 365 * 86400000).toISOString().split('T')[0];
-      const [accts, port, nw, nwHistory] = await Promise.all([
+      const [accts, port, nw] = await Promise.all([
         getAccounts(),
         getPortfolio(),
         getNetWorth() as Promise<NetWorthData>,
-        getNetWorthHistory(fromDate) as Promise<NetWorthHistoryPoint[]>,
       ]);
 
       setAccounts(accts);
       setPortfolio(port);
       setNetWorth(nw);
-      setNetWorthHistory(nwHistory);
 
       const balanceMap: Record<string, Balance> = {};
       const balanceResults = await Promise.allSettled(
@@ -124,6 +111,13 @@ export function Dashboard() {
     setLoading(true);
     fetchAllData().finally(() => setLoading(false));
   }, []);
+
+  // Perf history fetch — refetch on period change
+  useEffect(() => {
+    getPerformanceHistory({ period: activePeriod })
+      .then(setPerfHistory)
+      .catch(() => setPerfHistory(null));
+  }, [activePeriod]);
 
   // Auto-refresh: poll every 5s while any worker is connected but portfolio is empty
   const hasConnectedWorker = connectors.some(c => c.worker?.state === 'connected');
@@ -162,19 +156,6 @@ export function Dashboard() {
     );
   }, [allPositions]);
 
-  // Chart data from net worth history, filtered by period
-  const chartData = useMemo(() => {
-    const days = periodToDays(activePeriod);
-    const cutoff = days ? Date.now() - days * 86400000 : 0;
-
-    return netWorthHistory
-      .filter((pt) => new Date(pt.date).getTime() >= cutoff)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((pt) => ({
-        date: formatShortDate(pt.date),
-        value: Math.round(pt.total * 100) / 100,
-      }));
-  }, [netWorthHistory, activePeriod]);
 
   // Group accounts by connector
   const connectorAccounts = useMemo(() => {
@@ -314,11 +295,15 @@ export function Dashboard() {
       </div>
 
       {/* Courbe de performance */}
-      <PerformanceChart
-        data={chartData}
+      <PortfolioPerfChart
+        series={perfHistory?.series ?? []}
+        totalPct={perfHistory?.total_pct ?? 0}
+        valueNow={perfHistory?.value_now ?? 0}
+        currency={perfHistory?.currency ?? currency}
         periods={[...PERIODS]}
         activePeriod={activePeriod}
         onPeriodChange={setActivePeriod}
+        periodLabel={periodLabelFr(activePeriod)}
       />
 
       {/* Comptes connectés */}
