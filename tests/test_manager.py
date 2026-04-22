@@ -50,6 +50,30 @@ class FailingWorker(ConnectorWorker):
         pass
 
 
+class KeyCapturingWorker(ConnectorWorker):
+    def connect(self, credentials: dict):
+        key = self.config.get("worker_key", "MISSING")
+        self.event_queue.put({"type": "status", "state": "connected", "detail": key})
+
+    def disconnect(self):
+        pass
+
+    def fetch_accounts(self) -> list[dict]:
+        return []
+
+    def fetch_positions(self) -> list[dict]:
+        return []
+
+    def fetch_balances(self) -> list[dict]:
+        return []
+
+    def fetch_transactions(self) -> list[dict]:
+        return []
+
+    def submit_2fa(self, code: str):
+        pass
+
+
 def test_spawn_and_stop():
     mgr = ConnectorManager()
     mgr.register_worker_class("fake", FakeWorker)
@@ -97,3 +121,14 @@ def test_error_event_transitions_state_to_error():
     assert status["state"] == "error"
     assert status["detail"] == "boom"
     mgr.stop("err_1")
+
+
+def test_worker_receives_worker_key_in_config():
+    mgr = ConnectorManager()
+    mgr.register_worker_class("keycap", KeyCapturingWorker)
+    mgr.spawn("user42:myconn", "keycap", {})
+    time.sleep(0.5)
+    status = mgr.get_status("user42:myconn")
+    assert status["state"] == "connected"
+    assert status["detail"] == "user42:myconn"
+    mgr.stop("user42:myconn")

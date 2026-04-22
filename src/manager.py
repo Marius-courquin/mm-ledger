@@ -3,9 +3,9 @@ from dataclasses import dataclass, field
 from multiprocessing import Process, Queue
 
 
-def _run_worker(cls, cmd_q, event_q):
+def _run_worker(cls, cmd_q, event_q, config):
     """Module-level target so it can be pickled by the spawn start method."""
-    worker = cls(cmd_q, event_q, {})
+    worker = cls(cmd_q, event_q, config)
     worker.run()
 
 
@@ -37,7 +37,11 @@ class ConnectorManager:
         event_q = Queue()
         cls = self._worker_classes[connector_type]
 
-        proc = Process(target=_run_worker, args=(cls, cmd_q, event_q), daemon=True)
+        proc = Process(
+            target=_run_worker,
+            args=(cls, cmd_q, event_q, {"worker_key": connector_id}),
+            daemon=True,
+        )
         proc.start()
         handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
         self._workers[connector_id] = handle
