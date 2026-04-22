@@ -132,3 +132,32 @@ def test_worker_receives_worker_key_in_config():
     assert status["state"] == "connected"
     assert status["detail"] == "user42:myconn"
     mgr.stop("user42:myconn")
+
+
+class HistoryEmittingWorker(ConnectorWorker):
+    def connect(self, credentials: dict):
+        self.event_queue.put({"type": "status", "state": "connected"})
+
+    def disconnect(self): pass
+    def fetch_accounts(self): return []
+    def fetch_positions(self): return []
+    def fetch_balances(self): return []
+    def fetch_transactions(self): return []
+    def submit_2fa(self, code: str): pass
+
+    def fetch_history_data(self):
+        return {"transactions": [], "historical_prices": {}, "account_id": "ACC1"}
+
+
+def test_fetch_history_data_cmd_emits_history_data_event():
+    mgr = ConnectorManager()
+    mgr.register_worker_class("hist", HistoryEmittingWorker)
+    mgr.spawn("histuser:conn1", "hist", {})
+    time.sleep(0.3)
+    mgr.send_command("histuser:conn1", {"type": "fetch_history_data"})
+    time.sleep(0.5)
+    events = mgr.collect_events()
+    history_events = [e for e in events if e.get("type") == "history_data"]
+    assert len(history_events) == 1
+    assert history_events[0]["data"]["account_id"] == "ACC1"
+    mgr.stop("histuser:conn1")

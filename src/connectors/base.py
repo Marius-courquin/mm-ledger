@@ -29,6 +29,11 @@ class ConnectorWorker(ABC):
     @abstractmethod
     def submit_2fa(self, code: str) -> None: ...
 
+    def fetch_history_data(self) -> dict:
+        """Retourne {transactions, historical_prices, account_id, start_date, end_date, currency}.
+        Défaut vide — overridable par les connecteurs qui exposent executions + prix historiques."""
+        return {"transactions": [], "historical_prices": {}, "account_id": ""}
+
     def run(self):
         while True:
             cmd = self.cmd_queue.get()
@@ -44,6 +49,7 @@ class ConnectorWorker(ABC):
                     "fetch_positions": self.fetch_positions,
                     "fetch_balances": self.fetch_balances,
                     "fetch_transactions": self.fetch_transactions,
+                    "fetch_history_data": self.fetch_history_data,
                     "submit_2fa": lambda: self.submit_2fa(cmd["code"]),
                 }[cmd["type"]]
                 data = handler()
