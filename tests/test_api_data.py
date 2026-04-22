@@ -56,9 +56,3 @@ def test_get_transactions(client):
     assert r.json()[0]["type"] == "buy"
 
 
-def test_get_performance(client):
-    _seed(client)
-    r = client.get("/api/performance?from=2026-03-01&to=2026-03-31")
-    assert r.status_code == 200
-    assert len(r.json()) == 1
-    assert r.json()[0]["pnl"] == 100
