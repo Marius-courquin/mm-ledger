@@ -1,0 +1,76 @@
+from src.performance import reconstruct_timeline, TxEvent
+
+
+def _tx(date: str, kind: str, **kw) -> TxEvent:
+    return TxEvent(
+        date=date, kind=kind,
+        symbol=kw.get("symbol"),
+        qty=kw.get("qty", 0.0),
+        price=kw.get("price", 0.0),
+        amount=kw.get("amount", 0.0),
+    )
+
+
+def test_reconstruct_empty():
+    assert reconstruct_timeline([], {}, start_date="2026-01-01", end_date="2026-01-03") == [] or len(reconstruct_timeline([], {}, start_date="2026-01-01", end_date="2026-01-03")) == 3
+
+
+def test_reconstruct_buy_only_single_day():
+    txs = [_tx("2026-01-02", "buy", symbol="AMZN", qty=1.0, price=200.0, amount=-200.0)]
+    prices = {"AMZN": [
+        {"date": "2026-01-01", "close": 195.0},
+        {"date": "2026-01-02", "close": 200.0},
+        {"date": "2026-01-03", "close": 210.0},
+    ]}
+    timeline = reconstruct_timeline(txs, prices, start_date="2026-01-01", end_date="2026-01-03")
+    assert len(timeline) == 3
+    assert timeline[0]["date"] == "2026-01-01"
+    assert timeline[0]["positions_value"] == 0.0
+    assert timeline[0]["cash"] == 0.0
+    assert timeline[1]["cash"] == -200.0
+    assert timeline[1]["positions_value"] == 200.0
+    assert timeline[2]["positions_value"] == 210.0
+    assert timeline[2]["total_value"] == -200.0 + 210.0
+
+
+def test_reconstruct_buy_then_sell():
+    txs = [
+        _tx("2026-01-02", "buy", symbol="AMZN", qty=2.0, price=200.0, amount=-400.0),
+        _tx("2026-01-03", "sell", symbol="AMZN", qty=-1.0, price=250.0, amount=250.0),
+    ]
+    prices = {"AMZN": [
+        {"date": "2026-01-01", "close": 195.0},
+        {"date": "2026-01-02", "close": 200.0},
+        {"date": "2026-01-03", "close": 250.0},
+        {"date": "2026-01-04", "close": 260.0},
+    ]}
+    timeline = reconstruct_timeline(txs, prices, start_date="2026-01-01", end_date="2026-01-04")
+    assert timeline[3]["positions_value"] == 260.0
+    assert timeline[3]["cash"] == -150.0
+    assert timeline[3]["total_value"] == 110.0
+
+
+def test_reconstruct_external_deposit_tagged():
+    txs = [_tx("2026-01-02", "deposit", amount=1000.0)]
+    timeline = reconstruct_timeline(txs, {}, start_date="2026-01-01", end_date="2026-01-03")
+    assert timeline[0]["cash_flow_external"] == 0.0
+    assert timeline[1]["cash_flow_external"] == 1000.0
+    assert timeline[1]["cash"] == 1000.0
+    assert timeline[2]["cash"] == 1000.0
+    assert timeline[2]["cash_flow_external"] == 0.0
+
+
+def test_reconstruct_dividend_is_internal_gain():
+    txs = [
+        _tx("2026-01-02", "buy", symbol="AMZN", qty=1.0, price=200.0, amount=-200.0),
+        _tx("2026-01-03", "dividend", symbol="AMZN", amount=5.0),
+    ]
+    prices = {"AMZN": [
+        {"date": "2026-01-01", "close": 200.0},
+        {"date": "2026-01-02", "close": 200.0},
+        {"date": "2026-01-03", "close": 200.0},
+    ]}
+    timeline = reconstruct_timeline(txs, prices, start_date="2026-01-01", end_date="2026-01-03")
+    assert timeline[2]["cash_flow_external"] == 0.0
+    assert timeline[2]["cash"] == -195.0
+    assert timeline[2]["total_value"] == 5.0
