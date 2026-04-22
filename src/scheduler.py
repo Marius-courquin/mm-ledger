@@ -137,6 +137,18 @@ async def daily_snapshot():
         except Exception as e:
             _last_results["daily_snapshot"] = f"net_worth error ({user_id}): {e}"
 
+    # Portfolio history daily : append point du jour pour chaque worker CTO connecté
+    for user_id, worker_keys in user_workers.items():
+        if not user_id:
+            continue
+        for composite_key in worker_keys:
+            try:
+                deps.manager.send_command(composite_key, {"type": "fetch_history_data"})
+                await asyncio.sleep(5)
+                deps.manager.collect_events()  # déclenche _persist_history_for_worker
+            except Exception as e:
+                _last_results["daily_snapshot"] = f"history append error ({composite_key}): {e}"
+
 
 def setup_scheduler():
     global _scheduler
