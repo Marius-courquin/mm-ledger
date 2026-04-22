@@ -283,28 +283,28 @@ class IBKRWorker(ConnectorWorker):
             or "EUR"
         )
         rates: dict[str, float] = {base_currency: 1.0}
-        # Primary : ExchangeRate tag
-        for v in values:
-            if v.tag == "ExchangeRate" and v.currency and v.currency != "BASE":
-                try:
-                    ibkr_rate = float(v.value)
-                    if ibkr_rate > 0:
-                        rates[v.currency] = 1.0 / ibkr_rate
-                except (TypeError, ValueError):
-                    pass
-        # Fallback : dériver depuis StockMarketValue BASE / StockMarketValue(currency)
+        # Primary : dériver depuis StockMarketValue BASE / StockMarketValue(currency).
+        # Plus fiable que ExchangeRate car auto-consistant avec les totaux d'IBKR
+        # (sémantique du tag ExchangeRate varie selon version).
         smv_base = _base_value(values, "StockMarketValue")
         if smv_base > 0:
             for v in values:
                 if v.tag == "StockMarketValue" and v.currency not in (None, "", "BASE", base_currency):
-                    if v.currency in rates:
-                        continue  # déjà depuis ExchangeRate
                     try:
                         native = float(v.value)
                         if native > 0:
                             rates[v.currency] = smv_base / native
                     except (TypeError, ValueError):
                         pass
+        # Fallback : ExchangeRate tag (native→BASE, ex. USD→EUR = 0.854).
+        for v in values:
+            if v.tag == "ExchangeRate" and v.currency and v.currency not in rates:
+                try:
+                    ibkr_rate = float(v.value)
+                    if ibkr_rate > 0:
+                        rates[v.currency] = ibkr_rate
+                except (TypeError, ValueError):
+                    pass
         return rates, base_currency
 
     def fetch_balances(self) -> list[dict]:
