@@ -144,7 +144,9 @@ class IBKRWorker(ConnectorWorker):
         # IBKR n'a pas de WebSocket push — contrairement à TR — donc on déclenche
         # explicitement les fetches après connect. Les échecs individuels sont loggés
         # mais ne font pas échouer la connexion (le scheduler re-tentera à 23h).
-        self._ib.sleep(2)  # laisse ib_async accumuler managedAccounts() / accountValues()
+        # ib.sleep(5) laisse à ib_async le temps de recevoir managedAccounts(),
+        # accountValues() et positions() du serveur IBKR (3-5s typiquement).
+        self._ib.sleep(5)
         self._fetch_and_emit_initial()
 
     def _fetch_and_emit_initial(self) -> None:
@@ -152,6 +154,10 @@ class IBKRWorker(ConnectorWorker):
             try:
                 data = getattr(self, fetch_name)()
                 event_type = fetch_name.replace("fetch_", "")
+                log.info(
+                    "IBKR: connector=%s action=%s count=%d",
+                    self._safe_key(), fetch_name, len(data),
+                )
                 self.event_queue.put({"type": event_type, "data": data})
             except Exception as e:
                 log.warning(
@@ -193,6 +199,37 @@ class IBKRWorker(ConnectorWorker):
     def fetch_positions(self) -> list[dict]:
         if not self._ib:
             return []
+        raw = self._ib.positions()
+        log.info(
+            "IBKR: positions raw_count=%d sample=%s",
+            len(raw),
+            [(p.account, p.contract.symbol, p.contract.secType, float(p.position)) for p in raw[:5]],
+        )
+        # Fallback : si positions() est vide, essayer portfolio() qui peut contenir
+        # des holdings suivis via accountUpdates (subscription différente).
+        if not raw:
+            try:
+                pf = self._ib.portfolio()
+                log.info(
+                    "IBKR: portfolio fallback count=%d sample=%s",
+                    len(pf),
+                    [(p.account, p.contract.symbol, float(p.position), float(p.marketValue)) for p in pf[:5]],
+                )
+                return [
+                    {
+                        "account_id": p.account,
+                        "instrument": str(p.contract.conId),
+                        "symbol": p.contract.symbol,
+                        "category": p.contract.secType.lower(),
+                        "quantity": float(p.position),
+                        "avg_price": float(p.averageCost) if p.averageCost else 0.0,
+                        "currency": p.contract.currency,
+                    }
+                    for p in pf
+                    if float(p.position) != 0
+                ]
+            except Exception as e:
+                log.warning("IBKR: portfolio() fallback failed: %s", type(e).__name__)
         return [
             {
                 "account_id": p.account,
@@ -203,7 +240,7 @@ class IBKRWorker(ConnectorWorker):
                 "avg_price": float(p.avgCost),
                 "currency": p.contract.currency,
             }
-            for p in self._ib.positions()
+            for p in raw
         ]
 
     def fetch_balances(self) -> list[dict]:

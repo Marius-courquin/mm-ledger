@@ -5,6 +5,14 @@ from multiprocessing import Process, Queue
 
 def _run_worker(cls, cmd_q, event_q, config):
     """Module-level target so it can be pickled by the spawn start method."""
+    # Configure logging in the child process — sans ça, les log.info des workers
+    # disparaissent (le process fils n'hérite pas des handlers du parent).
+    import logging
+    logging.basicConfig(
+        level=logging.INFO,
+        format="[%(levelname)s] %(name)s: %(message)s",
+        force=True,
+    )
     worker = cls(cmd_q, event_q, config)
     worker.run()
 
