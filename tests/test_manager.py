@@ -27,6 +27,29 @@ class FakeWorker(ConnectorWorker):
         pass
 
 
+class FailingWorker(ConnectorWorker):
+    def connect(self, credentials: dict):
+        self.event_queue.put({"type": "error", "message": "boom"})
+
+    def disconnect(self):
+        pass
+
+    def fetch_accounts(self) -> list[dict]:
+        return []
+
+    def fetch_positions(self) -> list[dict]:
+        return []
+
+    def fetch_balances(self) -> list[dict]:
+        return []
+
+    def fetch_transactions(self) -> list[dict]:
+        return []
+
+    def submit_2fa(self, code: str):
+        pass
+
+
 def test_spawn_and_stop():
     mgr = ConnectorManager()
     mgr.register_worker_class("fake", FakeWorker)
@@ -63,3 +86,14 @@ def test_health_check():
     assert "test_1" in health
     assert health["test_1"] == "connected"
     mgr.stop_all()
+
+
+def test_error_event_transitions_state_to_error():
+    mgr = ConnectorManager()
+    mgr.register_worker_class("failing", FailingWorker)
+    mgr.spawn("err_1", "failing", {})
+    time.sleep(0.5)
+    status = mgr.get_status("err_1")
+    assert status["state"] == "error"
+    assert status["detail"] == "boom"
+    mgr.stop("err_1")

@@ -75,6 +75,9 @@ class ConnectorManager:
                     if evt_type == "status":
                         handle.state = event.get("state", handle.state)
                         handle.detail = event.get("detail")
+                    elif evt_type == "error":
+                        handle.state = "error"
+                        handle.detail = event.get("message")
                     elif evt_type in ("accounts", "balances", "positions", "transactions"):
                         # Cache live data
                         if cid not in self.live_data:
