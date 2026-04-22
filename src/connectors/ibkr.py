@@ -20,7 +20,8 @@ log = logging.getLogger(__name__)
 # Upgrade = action manuelle après audit du changelog amont.
 IBKR_GATEWAY_IMAGE = "ghcr.io/gnzsnz/ib-gateway@sha256:b248e4dad68cc1de8dd1905ea8598089e92307dfec57f59e08a28182bbb002d5"
 IBKR_NETWORK_NAME = "mm-ledger-net"
-IBKR_GATEWAY_PORT = 4001
+IBKR_GATEWAY_LIVE_PORT = 4001
+IBKR_GATEWAY_PAPER_PORT = 4002
 IBKR_GATEWAY_START_TIMEOUT = 90  # seconds
 
 
@@ -46,10 +47,11 @@ class IBKRWorker(ConnectorWorker):
         # App runs inside docker if /.dockerenv exists.
         return not os.path.exists("/.dockerenv")
 
-    def _gateway_endpoint(self) -> tuple[str, int]:
+    def _gateway_endpoint(self, trading_mode: str) -> tuple[str, int]:
+        port = IBKR_GATEWAY_PAPER_PORT if trading_mode == "paper" else IBKR_GATEWAY_LIVE_PORT
         if self._dev_mode():
-            return ("127.0.0.1", IBKR_GATEWAY_PORT)
-        return (self._container_name, IBKR_GATEWAY_PORT)
+            return ("127.0.0.1", port)
+        return (self._container_name, port)
 
     # ── contract methods ────────────────────────────────────────────────
 
@@ -79,14 +81,15 @@ class IBKRWorker(ConnectorWorker):
             nano_cpus=2_000_000_000,
             network=IBKR_NETWORK_NAME,
         )
+        trading_mode = credentials["trading_mode"]
+        gateway_host, gateway_port = self._gateway_endpoint(trading_mode)
         if self._dev_mode():
-            run_kwargs["ports"] = {"4001/tcp": ("127.0.0.1", IBKR_GATEWAY_PORT)}
+            run_kwargs["ports"] = {f"{gateway_port}/tcp": ("127.0.0.1", gateway_port)}
 
         self._container = self._docker.containers.run(**run_kwargs)
 
         # 3. Poll jusqu'à ce que le port réponde
         self.event_queue.put({"type": "status", "state": "starting_gateway"})
-        gateway_host, gateway_port = self._gateway_endpoint()
         deadline = time.time() + IBKR_GATEWAY_START_TIMEOUT
         while time.time() < deadline:
             try:

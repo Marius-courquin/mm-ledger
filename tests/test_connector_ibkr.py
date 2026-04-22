@@ -35,15 +35,38 @@ def test_dev_mode_false_when_dockerenv_exists():
 def test_gateway_endpoint_dev_returns_localhost():
     w = _make_worker()
     with patch.object(IBKRWorker, "_dev_mode", return_value=True):
-        assert w._gateway_endpoint() == ("127.0.0.1", 4001)
+        assert w._gateway_endpoint("live") == ("127.0.0.1", 4001)
 
 
 def test_gateway_endpoint_prod_returns_container_name():
     w = _make_worker("user1:ib")
     with patch.object(IBKRWorker, "_dev_mode", return_value=False):
-        host, port = w._gateway_endpoint()
+        host, port = w._gateway_endpoint("live")
         assert host == "mm-ledger-ibkr-user1-ib"
         assert port == 4001
+
+
+def test_gateway_endpoint_paper_mode_returns_port_4002():
+    w = _make_worker()
+    with patch.object(IBKRWorker, "_dev_mode", return_value=True):
+        assert w._gateway_endpoint("paper") == ("127.0.0.1", 4002)
+
+
+def test_gateway_endpoint_live_mode_returns_port_4001():
+    w = _make_worker()
+    with patch.object(IBKRWorker, "_dev_mode", return_value=True):
+        assert w._gateway_endpoint("live") == ("127.0.0.1", 4001)
+
+
+def test_connect_paper_mode_uses_port_4002():
+    w = _make_worker("u1:ib")
+    paper_creds = {"username": "charlie", "password": "s3cret", "trading_mode": "paper"}
+    with patch.object(IBKRWorker, "_dev_mode", return_value=True), \
+         _patch_connect_dependencies() as ctx:
+        w.connect(paper_creds)
+    kwargs = ctx["docker_client"].containers.run.call_args.kwargs
+    assert kwargs["ports"] == {"4002/tcp": ("127.0.0.1", 4002)}
+    ctx["ib"].connect.assert_called_once_with("127.0.0.1", 4002, clientId=1)
 
 
 def _creds() -> dict:
