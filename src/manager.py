@@ -90,6 +90,8 @@ class ConnectorManager:
                     elif evt_type == "error":
                         handle.state = "error"
                         handle.detail = event.get("message")
+                    elif evt_type == "history_data":
+                        self._persist_history_for_worker(cid, event.get("data", {}))
                     elif evt_type in ("accounts", "balances", "positions", "transactions"):
                         # Cache live data
                         if cid not in self.live_data:
@@ -139,3 +141,52 @@ class ConnectorManager:
         self.collect_events()
         prefix = f"{user_id}:"
         return {k[len(prefix):]: h.state for k, h in self._workers.items() if k.startswith(prefix)}
+
+    def _persist_history_for_worker(self, composite_key: str, data: dict) -> None:
+        """Reconstruit la timeline depuis data et upsert dans portfolio_history_daily."""
+        if ":" not in composite_key:
+            return
+        user_id, connector_id = composite_key.split(":", 1)
+        account_id = data.get("account_id") or connector_id
+        raw_txs = data.get("transactions", [])
+        historical_prices = data.get("historical_prices", {})
+        start = data.get("start_date")
+        end = data.get("end_date")
+        currency = data.get("currency", "EUR")
+        if not start or not end:
+            return
+
+        from src.performance import reconstruct_timeline, TxEvent
+        tx_events = [
+            TxEvent(
+                date=t["date"], kind=t["kind"],
+                symbol=t.get("symbol"),
+                qty=float(t.get("qty", 0.0)),
+                price=float(t.get("price", 0.0)),
+                amount=float(t.get("amount", 0.0)),
+            )
+            for t in raw_txs
+        ]
+        timeline = reconstruct_timeline(tx_events, historical_prices, start_date=start, end_date=end)
+
+        if not timeline:
+            return
+
+        from src.api import deps
+        from src.db.models import portfolio_history_daily
+        from sqlalchemy import insert
+        engine = deps.get_ledger(user_id)
+        with engine.begin() as conn:
+            for pt in timeline:
+                conn.execute(
+                    insert(portfolio_history_daily).prefix_with("OR REPLACE").values(
+                        connector_id=connector_id,
+                        account_id=account_id,
+                        date=pt["date"],
+                        total_value=pt["total_value"],
+                        cash=pt["cash"],
+                        positions_value=pt["positions_value"],
+                        cash_flow_external=pt["cash_flow_external"],
+                        currency=currency,
+                    )
+                )
