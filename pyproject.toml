@@ -13,6 +13,7 @@ dependencies = [
     "requests",
     "selenium",
     "ib_async",
+    "docker>=7",
     "woob",
     "bcrypt",
     "python-jose",
