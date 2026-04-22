@@ -163,18 +163,29 @@ export function Dashboard() {
   }, [allPositions]);
 
   // Chart data from net worth history, filtered by period
-  const chartData = useMemo(() => {
+  const filteredHistory = useMemo(() => {
     const days = periodToDays(activePeriod);
     const cutoff = days ? Date.now() - days * 86400000 : 0;
-
     return netWorthHistory
       .filter((pt) => new Date(pt.date).getTime() >= cutoff)
-      .sort((a, b) => a.date.localeCompare(b.date))
-      .map((pt) => ({
-        date: formatShortDate(pt.date),
-        value: Math.round(pt.total * 100) / 100,
-      }));
+      .sort((a, b) => a.date.localeCompare(b.date));
   }, [netWorthHistory, activePeriod]);
+
+  const chartData = useMemo(
+    () => filteredHistory.map((pt) => ({
+      date: formatShortDate(pt.date),
+      value: Math.round(pt.total * 100) / 100,
+    })),
+    [filteredHistory],
+  );
+
+  const investmentsChartData = useMemo(
+    () => filteredHistory.map((pt) => ({
+      date: formatShortDate(pt.date),
+      value: Math.round((pt.investments_total ?? 0) * 100) / 100,
+    })),
+    [filteredHistory],
+  );
 
   // Group accounts by connector
   const connectorAccounts = useMemo(() => {
@@ -313,12 +324,20 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Courbe de performance */}
+      {/* Courbes de performance */}
       <PerformanceChart
         data={chartData}
         periods={[...PERIODS]}
         activePeriod={activePeriod}
         onPeriodChange={setActivePeriod}
+        title="Capital NET"
+      />
+      <PerformanceChart
+        data={investmentsChartData}
+        periods={[...PERIODS]}
+        activePeriod={activePeriod}
+        onPeriodChange={setActivePeriod}
+        title="Investissements (IBKR + TR + autres CTO)"
       />
 
       {/* Comptes connectés */}
