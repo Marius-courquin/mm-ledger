@@ -47,11 +47,6 @@ cat > .env << EOF
 # VPN
 WG_HOST=${WG_HOST}
 WG_PASSWORD_HASH=${WG_PASSWORD_HASH}
-
-# IBKR (optionnel — décommente si tu utilises Interactive Brokers)
-# IBKR_USERNAME=
-# IBKR_PASSWORD=
-# IBKR_TRADING_MODE=live
 EOF
 
 echo ""

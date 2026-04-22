@@ -10,7 +10,7 @@ Agrégateur de portefeuille self-hosted. Un utilisateur connecte ses comptes (Tr
 
 - **Backend** : Python 3.12, FastAPI, SQLAlchemy 2 + Alembic, SQLCipher (vault + ledger), APScheduler, multiprocessing pour les workers de connecteurs, SSE (`sse-starlette`) pour le live.
 - **Frontend** : React 19 + Vite 6, TypeScript, TailwindCSS 4, HeroUI, Recharts, bun comme package manager, react-router 7.
-- **Déploiement** : Docker Compose (service `app` + optionnel `ib-gateway`, `wg-easy` VPN, `duckdns`, `watchtower`). Target Raspberry Pi (voir `setup-pi.sh`).
+- **Déploiement** : Docker Compose (service `app`, `wg-easy` VPN, `duckdns`, `watchtower`). Le container `ib-gateway` est spawn à la demande par l'app (docker SDK). Target Raspberry Pi (voir `setup-pi.sh`).
 
 ## Layout
 
@@ -61,7 +61,6 @@ cd frontend && bun run dev          # front sur :3000, proxy /api → :8000
 
 # Docker
 docker compose up -d                             # app seule
-docker compose --profile ibkr up -d              # + ib-gateway
 docker compose --profile vpn up -d               # + wg-easy + duckdns
 
 # Tests

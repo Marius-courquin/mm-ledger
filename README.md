@@ -10,11 +10,6 @@ docker compose up -d
 
 L'app est accessible sur `http://localhost:8000`. Le premier lancement affiche la page de creation du compte admin.
 
-Pour IBKR (optionnel) :
-```bash
-IBKR_USERNAME=user IBKR_PASSWORD=pass docker compose --profile ibkr up -d
-```
-
 ## Developpement local (macOS)
 
 ### Prerequisites
@@ -91,11 +86,12 @@ des droits équivalents à root sur l'hôte. Ce pattern était déjà utilisé p
 
 ```
 docker compose up
-  ├── app (FastAPI + React build, port 8000)
-  │   ├── /api/*        → Backend Python
-  │   └── /*            → Frontend React (SPA)
-  └── ib-gateway (optionnel, profil ibkr)
+  └── app (FastAPI + React build, port 8000)
+      ├── /api/*        → Backend Python
+      └── /*            → Frontend React (SPA)
 ```
+
+Le container `ib-gateway` est spawn dynamiquement par l'app au moment de la connexion IBKR (voir section IBKR ci-dessus).
 
 - **Auth** : multi-utilisateurs, JWT cookie HttpOnly, roles admin/user
 - **Donnees** : isolees par user (`data/users/{id}/vault.db + ledger.db`)
