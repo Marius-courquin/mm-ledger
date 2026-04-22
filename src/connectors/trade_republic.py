@@ -367,6 +367,104 @@ class TradeRepublicWorker(ConnectorWorker):
                 log.info(f"Fetched {len(all_items)} transactions so far...")
         return all_items
 
+    def fetch_history_data(self) -> dict:
+        """Historique TR : timelineTransactions classés + prix historiques par ISIN.
+
+        Limite v1 : les ISIN + qty + prix des trades TR ne sont pas extraits de
+        timelineTransactions (nécessiterait timelineDetailV2 par tx). Pour l'instant
+        les buys/sells affectent le cash mais pas la reconstruction des qty → la
+        courbe TWR reflète surtout les dépôts/retraits/dividendes, pas la perf
+        interne des trades. À raffiner en v2."""
+        import websockets.sync.client as ws_client
+        import json
+        from datetime import date, timedelta
+
+        end = date.today().isoformat()
+        start = (date.today() - timedelta(days=730)).isoformat()
+
+        BUY_TYPES = {"ORDER_EXECUTED", "TRADE_EXECUTED", "SAVINGS_PLAN_EXECUTED"}
+        SELL_TYPES = {"TRADE_SELL_EXECUTED"}
+        DEPOSIT_TYPES = {"INCOMING_TRANSFER", "PAYMENT_INBOUND", "PAYMENT_INBOUND_SEPA_DIRECT_DEBIT"}
+        WITHDRAWAL_TYPES = {"PAYMENT_OUTBOUND", "OUTGOING_TRANSFER"}
+        DIVIDEND_TYPES = {"CREDIT", "ssp_corporate_action_invoice_cash"}
+        INTEREST_TYPES = {"INTEREST_PAYOUT_CREATED", "INTEREST_PAYOUT"}
+
+        raw_items = []
+        try:
+            raw_items = self.fetch_transactions()
+        except Exception as e:
+            log.warning(f"TR: fetch_transactions for history failed: {e}")
+
+        txs: list[dict] = []
+        for t in raw_items:
+            rt = t.get("eventType", "")
+            amount_data = t.get("amount", {})
+            amount = float(amount_data.get("value", 0)) if isinstance(amount_data, dict) else 0
+            d = str(t.get("timestamp", ""))[:10]
+            if not d:
+                continue
+            if rt in BUY_TYPES:
+                txs.append({"date": d, "kind": "buy", "symbol": None, "qty": 0, "price": 0, "amount": amount})
+            elif rt in SELL_TYPES:
+                txs.append({"date": d, "kind": "sell", "symbol": None, "qty": 0, "price": 0, "amount": amount})
+            elif rt in DEPOSIT_TYPES:
+                txs.append({"date": d, "kind": "deposit", "amount": amount})
+            elif rt in WITHDRAWAL_TYPES:
+                txs.append({"date": d, "kind": "withdrawal", "amount": amount})
+            elif rt in DIVIDEND_TYPES:
+                txs.append({"date": d, "kind": "dividend", "amount": amount})
+            elif rt in INTEREST_TYPES:
+                txs.append({"date": d, "kind": "interest", "amount": amount})
+
+        # Historique des prix par ISIN détenu — best effort, WS non documenté officiellement.
+        historical_prices: dict[str, list[dict]] = {}
+        isins_seen: set[str] = set()
+        try:
+            positions = self.fetch_positions()
+            if isinstance(positions, list):
+                for acc_data in positions:
+                    for cat in acc_data.get("categories", []):
+                        for p in cat.get("positions", []):
+                            isin = p.get("isin") or p.get("shortName")
+                            if isin:
+                                isins_seen.add(isin)
+        except Exception as e:
+            log.warning(f"TR: fetch positions for hist failed: {e}")
+
+        if isins_seen:
+            try:
+                with ws_client.connect("wss://api.traderepublic.com") as ws:
+                    self._ws_connect(ws)
+                    for isin in isins_seen:
+                        try:
+                            bars_resp = self._ws_sub(ws, {
+                                "type": "aggregateHistoryLight",
+                                "token": self._session_token,
+                                "id": f"{isin}.LSX",
+                                "range": "2y",
+                                "resolution": "1d",
+                            })
+                            if isinstance(bars_resp, dict) and "aggregates" in bars_resp:
+                                historical_prices[isin] = [
+                                    {"date": str(a.get("time", ""))[:10], "close": float(a.get("close", 0))}
+                                    for a in bars_resp["aggregates"]
+                                    if a.get("time")
+                                ]
+                        except Exception as e:
+                            log.warning(f"TR: aggregateHistoryLight {isin} failed: {e}")
+            except Exception as e:
+                log.warning(f"TR: WS history connect failed: {e}")
+
+        log.info(f"TR: history_data txs={len(txs)} isins={len(historical_prices)}")
+        return {
+            "account_id": "tr",
+            "transactions": txs,
+            "historical_prices": historical_prices,
+            "start_date": start,
+            "end_date": end,
+            "currency": "EUR",
+        }
+
     # --- WebSocket helpers (exact protocol from trade_republic_scraper) ---
 
     _ws_msg_id = 0
