@@ -155,3 +155,74 @@ def compute_eta(target_amount: float, current_value: float, rate: float) -> tupl
     if rate <= 0:
         return None, "insufficient"
     return (target_amount - current_value) / rate, "ok"
+
+
+def compute_history(target: dict, slices: list[dict], engine: Engine, today: date) -> list[dict]:
+    """Reconstruit la valeur de la cible jour par jour à partir des snapshots existants.
+
+    Stratégie v1 : on applique l'allocation actuelle rétroactivement.
+    Returns: liste triée chronologiquement de {"date": str, "value": float}.
+    """
+    if target["type"] == "asset":
+        return _history_asset(target, engine)
+    return _history_bucket(slices, engine)
+
+
+def _history_asset(target: dict, engine: Engine) -> list[dict]:
+    stmt = (
+        select(balance_snapshots.c.date, balance_snapshots.c.positions)
+        .where(balance_snapshots.c.account_id == target["asset_account_id"])
+        .order_by(balance_snapshots.c.date)
+    )
+    with engine.connect() as conn:
+        rows = conn.execute(stmt).fetchall()
+    out = []
+    for r in rows:
+        positions = r.positions or []
+        value = 0.0
+        for p in positions:
+            if p.get("symbol") == target["asset_symbol"]:
+                value = float(p.get("value") or 0.0)
+                break
+        out.append({"date": r.date, "value": value})
+    return out
+
+
+def _history_bucket(slices: list[dict], engine: Engine) -> list[dict]:
+    if not slices:
+        return []
+    account_ids = [s["account_id"] for s in slices]
+    with engine.connect() as conn:
+        stmt = (
+            select(balance_snapshots.c.account_id, balance_snapshots.c.date,
+                   balance_snapshots.c.total_value)
+            .where(balance_snapshots.c.account_id.in_(account_ids))
+            .order_by(balance_snapshots.c.date)
+        )
+        rows = conn.execute(stmt).fetchall()
+    if not rows:
+        return []
+    per_account: dict[str, list[tuple[str, float]]] = {}
+    all_dates: set[str] = set()
+    for r in rows:
+        per_account.setdefault(r.account_id, []).append(
+            (r.date, float(r.total_value) if r.total_value is not None else 0.0)
+        )
+        all_dates.add(r.date)
+    out = []
+    for d in sorted(all_dates):
+        total = 0.0
+        for s in slices:
+            series = per_account.get(s["account_id"], [])
+            acc_total = 0.0
+            for snap_date, val in series:
+                if snap_date <= d:
+                    acc_total = val
+                else:
+                    break
+            if s["allocation_kind"] == "amount":
+                total += min(float(s["allocation_value"]), acc_total)
+            else:
+                total += acc_total * float(s["allocation_value"]) / 100.0
+        out.append({"date": d, "value": total})
+    return out

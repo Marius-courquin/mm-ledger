@@ -173,3 +173,52 @@ def test_eta_insufficient_negative():
     months, status = compute_eta(target_amount=1000, current_value=400, rate=-50)
     assert months is None
     assert status == "insufficient"
+
+
+# ── Task 7 : compute_history ─────────────────────────────────────────────────
+
+def test_history_bucket_percent(tmp_path):
+    from src.services.target_progression import compute_history
+    engine = _seed_history(tmp_path, "a", [
+        ("2026-02-01", 1000),
+        ("2026-03-01", 1100),
+        ("2026-04-01", 1200),
+    ])
+    target = {"type": "bucket"}
+    slices = [{"account_id": "a", "allocation_kind": "percent", "allocation_value": 50}]
+    points = compute_history(target, slices, engine, today=date(2026, 4, 28))
+    by_date = {p["date"]: p["value"] for p in points}
+    assert by_date["2026-02-01"] == 500.0
+    assert by_date["2026-03-01"] == 550.0
+    assert by_date["2026-04-01"] == 600.0
+
+
+def test_history_asset(tmp_path):
+    from src.services.target_progression import compute_history
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    with engine.begin() as conn:
+        conn.execute(insert(connectors).values(id="c", type="trade_republic"))
+        conn.execute(insert(accounts).values(id="cto", connector_id="c", name="CTO", type="cto"))
+        for d, val in [("2026-02-01", 1000), ("2026-03-01", 1500), ("2026-04-01", 1800)]:
+            conn.execute(insert(balance_snapshots).values(
+                account_id="cto", date=d,
+                cash=0, positions_value=val, total_value=val,
+                positions=[{"symbol": "VWCE", "qty": 10, "price": val/10, "value": val}],
+            ))
+    target = {"type": "asset", "asset_account_id": "cto", "asset_symbol": "VWCE"}
+    points = compute_history(target, [], engine, today=date(2026, 4, 28))
+    by_date = {p["date"]: p["value"] for p in points}
+    assert by_date["2026-02-01"] == 1000.0
+    assert by_date["2026-04-01"] == 1800.0
+
+
+def test_history_empty(tmp_path):
+    from src.services.target_progression import compute_history
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    with engine.begin() as conn:
+        conn.execute(insert(connectors).values(id="c", type="trade_republic"))
+        conn.execute(insert(accounts).values(id="a", connector_id="c", name="A", type="cto"))
+    target = {"type": "bucket"}
+    slices = [{"account_id": "a", "allocation_kind": "percent", "allocation_value": 100}]
+    points = compute_history(target, slices, engine, today=date(2026, 4, 28))
+    assert points == []
