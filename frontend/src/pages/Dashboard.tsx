@@ -4,6 +4,7 @@ import { MetricCard } from '@/components/MetricCard';
 import { PortfolioPerfChart } from '@/components/PortfolioPerfChart';
 import { getPerformanceHistory, type PerfHistory } from '@/api/performance';
 import { AccountRow } from '@/components/AccountRow';
+import { ObjectifsCard } from '@/components/ObjectifsCard';
 import { useApp } from '@/context/AppContext';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
 import { getPortfolio } from '@/api/portfolio';
@@ -222,6 +223,9 @@ export function Dashboard() {
           icon={<Trophy size={12} className="text-mm-gold" />}
         />
       </div>
+
+      {/* Card Objectifs */}
+      <ObjectifsCard />
 
       {/* Cashflow avec sélecteur de période */}
       <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5">
