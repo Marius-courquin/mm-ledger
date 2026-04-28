@@ -92,3 +92,54 @@ def test_current_value_bucket_amount_capped(tmp_path):
     slices = [{"account_id": "livret", "allocation_kind": "amount", "allocation_value": 5000}]
     val = compute_current_value(target, slices, engine, today=date(2026, 4, 28))
     assert val == 1000.0
+
+
+# ── Task 5 : compute_rate ────────────────────────────────────────────────────
+
+def _seed_history(tmp_path, account_id, dates_values):
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    with engine.begin() as conn:
+        conn.execute(insert(connectors).values(id="c", type="trade_republic"))
+        conn.execute(insert(accounts).values(id=account_id, connector_id="c", name="A", type="cto"))
+        for d, v in dates_values:
+            conn.execute(insert(balance_snapshots).values(
+                account_id=account_id, date=d,
+                cash=0, positions_value=v, total_value=v, positions=[],
+            ))
+    return engine
+
+
+def test_rate_override(tmp_path):
+    from src.services.target_progression import compute_rate
+    engine = _seed_history(tmp_path, "a", [("2026-01-15", 1000), ("2026-04-15", 1300)])
+    target = {"type": "bucket", "rate_override": 250.0}
+    slices = [{"account_id": "a", "allocation_kind": "percent", "allocation_value": 100}]
+    rate, source = compute_rate(target, slices, engine, today=date(2026, 4, 28))
+    assert rate == 250.0
+    assert source == "override"
+
+
+def test_rate_auto_3_months(tmp_path):
+    from src.services.target_progression import compute_rate
+    engine = _seed_history(tmp_path, "a", [
+        ("2026-01-28", 1000),
+        ("2026-04-28", 1300),
+    ])
+    target = {"type": "bucket", "rate_override": None}
+    slices = [{"account_id": "a", "allocation_kind": "percent", "allocation_value": 100}]
+    rate, source = compute_rate(target, slices, engine, today=date(2026, 4, 28))
+    assert abs(rate - 100.0) < 1.0
+    assert source == "auto"
+
+
+def test_rate_auto_no_history(tmp_path):
+    from src.services.target_progression import compute_rate
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    with engine.begin() as conn:
+        conn.execute(insert(connectors).values(id="c", type="trade_republic"))
+        conn.execute(insert(accounts).values(id="a", connector_id="c", name="A", type="cto"))
+    target = {"type": "bucket", "rate_override": None}
+    slices = [{"account_id": "a", "allocation_kind": "percent", "allocation_value": 100}]
+    rate, source = compute_rate(target, slices, engine, today=date(2026, 4, 28))
+    assert rate == 0.0
+    assert source == "auto"
