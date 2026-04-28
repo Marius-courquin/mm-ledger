@@ -1,8 +1,4 @@
 import { useEffect, useState } from 'react';
-import {
-  Modal, ModalContent, ModalHeader, ModalBody, ModalFooter,
-  Button, Input, Select, SelectItem, Tabs, Tab,
-} from '@heroui/react';
 import { createTarget } from '@/api/targets';
 import { getAccounts } from '@/api/accounts';
 import type { TargetCreatePayload, AllocationKind } from '@/lib/targets';
@@ -73,53 +69,86 @@ export function TargetCreateModal({ isOpen, onClose, onCreated }: Props) {
     }
   }
 
-  return (
-    <Modal isOpen={isOpen} onClose={onClose} size="2xl">
-      <ModalContent>
-        <ModalHeader>Nouvelle cible</ModalHeader>
-        <ModalBody className="space-y-4">
-          <Tabs selectedKey={type} onSelectionChange={(k) => setType(k as 'asset' | 'bucket')}>
-            <Tab key="bucket" title="Bucket abstrait">
-              <div className="space-y-2 mt-2">
-                <p className="text-sm text-default-500">
-                  Composé de slices d'allocation sur tes comptes (ex. 30 % du CTO + 1 500 € du Livret A).
-                </p>
-              </div>
-            </Tab>
-            <Tab key="asset" title="Actif précis">
-              <div className="space-y-2 mt-2">
-                <p className="text-sm text-default-500">
-                  Lié à une position spécifique (ex. atteindre 5 000 € sur VWCE).
-                </p>
-              </div>
-            </Tab>
-          </Tabs>
+  if (!isOpen) return null;
 
-          <Input label="Nom" value={name} onValueChange={setName} placeholder="Ex. Apport immo" />
-          <Input
-            label="Montant cible (€)"
-            type="number"
-            value={targetAmount}
-            onValueChange={setTargetAmount}
-          />
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-mm-surface border border-mm-border rounded-[16px] w-full max-w-2xl p-6 flex flex-col gap-5 max-h-[85vh] overflow-y-auto"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-mm-text">Nouvelle cible</h2>
+
+        {/* Type tabs */}
+        <div className="flex gap-1 bg-mm-surface-elevated p-1 rounded-[8px]">
+          {(['bucket', 'asset'] as const).map((t) => (
+            <button
+              key={t}
+              onClick={() => setType(t)}
+              className={`flex-1 py-1.5 text-sm rounded-[6px] transition-colors ${
+                type === t
+                  ? 'bg-mm-surface text-mm-text font-medium'
+                  : 'text-mm-text-muted hover:text-mm-text-secondary'
+              }`}
+            >
+              {t === 'bucket' ? 'Bucket abstrait' : 'Actif précis'}
+            </button>
+          ))}
+        </div>
+
+        <p className="text-sm text-mm-text-muted -mt-2">
+          {type === 'bucket'
+            ? 'Composé de slices d\'allocation sur tes comptes (ex. 30 % du CTO + 1 500 € du Livret A).'
+            : 'Lié à une position spécifique (ex. atteindre 5 000 € sur VWCE).'}
+        </p>
+
+        <div className="flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-mm-text-secondary">Nom</label>
+            <input
+              type="text"
+              placeholder="Ex. Apport immo"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-3 py-2 text-sm text-mm-text placeholder:text-mm-text-muted outline-none focus:border-mm-gold transition-colors"
+            />
+          </div>
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-xs font-medium text-mm-text-secondary">Montant cible (€)</label>
+            <input
+              type="number"
+              value={targetAmount}
+              onChange={(e) => setTargetAmount(e.target.value)}
+              className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-3 py-2 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors"
+            />
+          </div>
 
           {type === 'asset' && (
             <>
-              <Select
-                label="Compte"
-                selectedKeys={assetAccount ? [assetAccount] : []}
-                onSelectionChange={(k) => setAssetAccount(Array.from(k)[0] as string ?? '')}
-              >
-                {accounts.map((a) => (
-                  <SelectItem key={a.id}>{a.name ?? a.id}</SelectItem>
-                ))}
-              </Select>
-              <Input
-                label="Symbole / ISIN"
-                value={assetSymbol}
-                onValueChange={setAssetSymbol}
-                placeholder="VWCE / IE00BK5BQT80"
-              />
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-mm-text-secondary">Compte</label>
+                <select
+                  value={assetAccount}
+                  onChange={(e) => setAssetAccount(e.target.value)}
+                  className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-3 py-2 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors appearance-none cursor-pointer"
+                >
+                  <option value="">Sélectionner un compte</option>
+                  {accounts.map((a) => (
+                    <option key={a.id} value={a.id}>{a.name ?? a.id}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-medium text-mm-text-secondary">Symbole / ISIN</label>
+                <input
+                  type="text"
+                  placeholder="VWCE / IE00BK5BQT80"
+                  value={assetSymbol}
+                  onChange={(e) => setAssetSymbol(e.target.value)}
+                  className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-3 py-2 text-sm text-mm-text placeholder:text-mm-text-muted outline-none focus:border-mm-gold transition-colors"
+                />
+              </div>
             </>
           )}
 
@@ -127,14 +156,26 @@ export function TargetCreateModal({ isOpen, onClose, onCreated }: Props) {
             <SliceListEditor accounts={accounts} slices={slices} onChange={setSlices} />
           )}
 
-          {error && <p className="text-sm text-mm-loss">{error}</p>}
-        </ModalBody>
-        <ModalFooter>
-          <Button variant="flat" onPress={onClose}>Annuler</Button>
-          <Button color="primary" onPress={submit} isLoading={submitting}>Créer</Button>
-        </ModalFooter>
-      </ModalContent>
-    </Modal>
+          {error && <p className="text-sm" style={{ color: 'var(--mm-loss)' }}>{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 pt-2">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-mm-text-muted hover:text-mm-text-secondary transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="px-5 py-2 bg-mm-gold text-mm-bg text-sm font-semibold rounded-[8px] disabled:opacity-50 transition-opacity"
+          >
+            {submitting ? 'Création...' : 'Créer'}
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -148,9 +189,9 @@ function SliceListEditor({
   function addSlice() {
     onChange([...slices, { account_id: accounts[0]?.id ?? '', allocation_kind: 'percent', allocation_value: 0 }]);
   }
-  function update(idx: number, patch: Partial<typeof slices[0]>) {
+  function update(idx: number, patch: Partial<{ account_id: string; allocation_kind: AllocationKind; allocation_value: number }>) {
     const next = slices.slice();
-    next[idx] = { ...next[idx], ...patch };
+    next[idx] = { ...next[idx], ...patch } as { account_id: string; allocation_kind: AllocationKind; allocation_value: number };
     onChange(next);
   }
   function remove(idx: number) {
@@ -158,43 +199,59 @@ function SliceListEditor({
   }
 
   return (
-    <div className="space-y-2">
+    <div className="flex flex-col gap-2">
       <div className="flex items-center justify-between">
-        <span className="text-sm font-medium">Slices d'allocation</span>
-        <Button size="sm" variant="flat" onPress={addSlice}>+ Ajouter</Button>
+        <span className="text-sm font-medium text-mm-text-secondary">Slices d'allocation</span>
+        <button
+          onClick={addSlice}
+          className="px-3 py-1 text-xs border border-mm-border text-mm-text-muted hover:text-mm-text-secondary rounded-[6px] transition-colors"
+        >
+          + Ajouter
+        </button>
       </div>
       {slices.length === 0 && (
-        <p className="text-xs text-default-500">Ajoute au moins une slice (un compte source + montant ou %).</p>
+        <p className="text-xs text-mm-text-muted">Ajoute au moins une slice (un compte source + montant ou %).</p>
       )}
       {slices.map((s, i) => (
         <div key={i} className="flex gap-2 items-end">
-          <Select
-            label="Compte"
-            className="flex-1"
-            selectedKeys={s.account_id ? [s.account_id] : []}
-            onSelectionChange={(k) => update(i, { account_id: Array.from(k)[0] as string ?? '' })}
+          <div className="flex-1 flex flex-col gap-1">
+            <label className="text-xs text-mm-text-muted">Compte</label>
+            <select
+              value={s.account_id}
+              onChange={(e) => update(i, { account_id: e.target.value })}
+              className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-2 py-1.5 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors appearance-none cursor-pointer"
+            >
+              {accounts.map((a) => (
+                <option key={a.id} value={a.id}>{a.name ?? a.id}</option>
+              ))}
+            </select>
+          </div>
+          <div className="w-24 flex flex-col gap-1">
+            <label className="text-xs text-mm-text-muted">Type</label>
+            <select
+              value={s.allocation_kind}
+              onChange={(e) => update(i, { allocation_kind: e.target.value as AllocationKind })}
+              className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-2 py-1.5 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors appearance-none cursor-pointer"
+            >
+              <option value="percent">%</option>
+              <option value="amount">€</option>
+            </select>
+          </div>
+          <div className="w-24 flex flex-col gap-1">
+            <label className="text-xs text-mm-text-muted">Valeur</label>
+            <input
+              type="number"
+              value={s.allocation_value}
+              onChange={(e) => update(i, { allocation_value: parseFloat(e.target.value) || 0 })}
+              className="bg-mm-surface-elevated border border-mm-border rounded-[8px] px-2 py-1.5 text-sm text-mm-text outline-none focus:border-mm-gold transition-colors"
+            />
+          </div>
+          <button
+            onClick={() => remove(i)}
+            className="px-2 py-1.5 text-sm text-red-400 hover:text-red-300 transition-colors mb-[1px]"
           >
-            {accounts.map((a) => (
-              <SelectItem key={a.id}>{a.name ?? a.id}</SelectItem>
-            ))}
-          </Select>
-          <Select
-            label="Type"
-            className="w-32"
-            selectedKeys={[s.allocation_kind]}
-            onSelectionChange={(k) => update(i, { allocation_kind: Array.from(k)[0] as AllocationKind })}
-          >
-            <SelectItem key="percent">%</SelectItem>
-            <SelectItem key="amount">€</SelectItem>
-          </Select>
-          <Input
-            label="Valeur"
-            type="number"
-            className="w-32"
-            value={String(s.allocation_value)}
-            onValueChange={(v) => update(i, { allocation_value: parseFloat(v) || 0 })}
-          />
-          <Button size="sm" color="danger" variant="flat" onPress={() => remove(i)}>×</Button>
+            ×
+          </button>
         </div>
       ))}
     </div>

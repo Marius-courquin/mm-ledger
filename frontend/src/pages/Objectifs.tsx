@@ -1,6 +1,5 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Card, CardBody, CardHeader, Button, Progress, Chip } from '@heroui/react';
 import { listTargets, getProgression } from '@/api/targets';
 import type { Target, Progression } from '@/lib/targets';
 import { TargetCreateModal } from '@/components/TargetCreateModal';
@@ -35,31 +34,41 @@ export function Objectifs() {
     }
   }
 
-  useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [showArchived]);
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showArchived]);
 
   return (
-    <div className="p-6 space-y-4">
+    <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold">Objectifs</h1>
+        <h1 className="text-[28px] font-semibold text-mm-text">Objectifs</h1>
         <div className="flex gap-2">
-          <Button
-            variant={showArchived ? 'solid' : 'flat'}
-            onPress={() => setShowArchived((v) => !v)}
+          <button
+            onClick={() => setShowArchived((v) => !v)}
+            className={`px-4 py-2 text-sm rounded-[8px] border transition-colors ${
+              showArchived
+                ? 'border-mm-gold text-mm-gold'
+                : 'border-mm-border text-mm-text-muted hover:text-mm-text-secondary'
+            }`}
           >
             {showArchived ? 'Afficher actives' : 'Afficher archivées'}
-          </Button>
-          <Button color="primary" onPress={() => setCreateOpen(true)}>
+          </button>
+          <button
+            onClick={() => setCreateOpen(true)}
+            className="px-4 py-2 bg-mm-gold text-mm-bg text-sm font-semibold rounded-[8px] transition-opacity hover:opacity-90"
+          >
             Nouvelle cible
-          </Button>
+          </button>
         </div>
       </div>
 
-      {loading && <div className="text-sm text-default-500">Chargement…</div>}
+      {loading && <div className="text-sm text-mm-text-muted">Chargement…</div>}
 
       {!loading && targets.length === 0 && (
-        <Card><CardBody className="text-center text-default-500 py-12">
+        <div className="bg-mm-surface border border-mm-border rounded-[12px] px-5 py-12 text-center text-sm text-mm-text-muted">
           Aucune cible pour l'instant. Crée ta première cible pour démarrer.
-        </CardBody></Card>
+        </div>
       )}
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -68,33 +77,40 @@ export function Objectifs() {
           const eta = t.progression?.eta_months;
           const status = t.progression?.eta_status;
           return (
-            <Link key={t.id} to={`/objectifs/${t.id}`}>
-              <Card className="hover:scale-[1.01] transition-transform">
-                <CardHeader className="flex justify-between items-start">
-                  <div>
-                    <div className="font-medium">{t.name}</div>
-                    <Chip size="sm" variant="flat" className="mt-1">
-                      {t.type === 'asset' ? 'Actif' : 'Bucket'}
-                    </Chip>
-                  </div>
-                  <div className="text-right">
-                    <div className="text-sm text-default-500">cible</div>
-                    <div className="font-mono">{t.target_amount.toLocaleString('fr-FR')} €</div>
-                  </div>
-                </CardHeader>
-                <CardBody className="space-y-2">
-                  <Progress value={pct} className="w-full" />
-                  <div className="flex justify-between text-sm">
-                    <span>{(t.progression?.current_value ?? 0).toLocaleString('fr-FR')} €</span>
-                    <span className="text-default-500">{pct.toFixed(1)} %</span>
-                  </div>
-                  <div className="text-xs text-default-500">
-                    {status === 'reached' && '🎉 Atteint'}
-                    {status === 'ok' && eta != null && `À ton rythme : ${Math.round(eta)} mois`}
-                    {status === 'insufficient' && 'Rythme insuffisant'}
-                  </div>
-                </CardBody>
-              </Card>
+            <Link
+              key={t.id}
+              to={`/objectifs/${t.id}`}
+              className="bg-mm-surface border border-mm-border rounded-[12px] p-4 flex flex-col gap-3 hover:border-mm-gold/40 transition-colors"
+            >
+              <div className="flex justify-between items-start">
+                <div>
+                  <div className="font-medium text-mm-text">{t.name}</div>
+                  <span className="mt-1 inline-block text-[11px] font-medium px-2 py-0.5 rounded-full bg-mm-surface-elevated text-mm-text-muted">
+                    {t.type === 'asset' ? 'Actif' : 'Bucket'}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <div className="text-xs text-mm-text-muted">cible</div>
+                  <div className="font-mono text-mm-text">{t.target_amount.toLocaleString('fr-FR')} €</div>
+                </div>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <div className="w-full bg-mm-surface-elevated rounded-full h-1.5 overflow-hidden">
+                  <div
+                    className="h-full rounded-full bg-mm-gain"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex justify-between text-sm">
+                  <span className="text-mm-text">{(t.progression?.current_value ?? 0).toLocaleString('fr-FR')} €</span>
+                  <span className="text-mm-text-muted">{pct.toFixed(1)} %</span>
+                </div>
+                <div className="text-xs text-mm-text-muted">
+                  {status === 'reached' && '🎉 Atteint'}
+                  {status === 'ok' && eta != null && `À ton rythme : ${Math.round(eta)} mois`}
+                  {status === 'insufficient' && 'Rythme insuffisant'}
+                </div>
+              </div>
             </Link>
           );
         })}
