@@ -143,3 +143,33 @@ def test_rate_auto_no_history(tmp_path):
     rate, source = compute_rate(target, slices, engine, today=date(2026, 4, 28))
     assert rate == 0.0
     assert source == "auto"
+
+
+# ── Task 6 : compute_eta ─────────────────────────────────────────────────────
+
+def test_eta_reached():
+    from src.services.target_progression import compute_eta
+    months, status = compute_eta(target_amount=1000, current_value=1200, rate=100)
+    assert months is None
+    assert status == "reached"
+
+
+def test_eta_ok():
+    from src.services.target_progression import compute_eta
+    months, status = compute_eta(target_amount=1000, current_value=400, rate=100)
+    assert months == 6.0
+    assert status == "ok"
+
+
+def test_eta_insufficient_zero():
+    from src.services.target_progression import compute_eta
+    months, status = compute_eta(target_amount=1000, current_value=400, rate=0)
+    assert months is None
+    assert status == "insufficient"
+
+
+def test_eta_insufficient_negative():
+    from src.services.target_progression import compute_eta
+    months, status = compute_eta(target_amount=1000, current_value=400, rate=-50)
+    assert months is None
+    assert status == "insufficient"

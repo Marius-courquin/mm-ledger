@@ -146,3 +146,12 @@ def _value_bucket_at(slices: list[dict], engine: Engine, target_date: date) -> f
             else:
                 total += acc_total * float(s["allocation_value"]) / 100.0
     return total if found_any else None
+
+
+def compute_eta(target_amount: float, current_value: float, rate: float) -> tuple[float | None, str]:
+    """Renvoie (eta_months, status)."""
+    if current_value >= target_amount:
+        return None, "reached"
+    if rate <= 0:
+        return None, "insufficient"
+    return (target_amount - current_value) / rate, "ok"
