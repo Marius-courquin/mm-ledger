@@ -21,6 +21,22 @@ def test_tables_created():
         engine.dispose()
 
 
+def test_targets_tables_created(tmp_path):
+    from src.db.engine import create_engine_and_tables
+    from src.db.models import targets, target_slices
+    from sqlalchemy import inspect
+
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    insp = inspect(engine)
+    assert "targets" in insp.get_table_names()
+    assert "target_slices" in insp.get_table_names()
+    cols = {c["name"] for c in insp.get_columns("targets")}
+    assert {"id", "name", "type", "target_amount", "asset_account_id",
+            "asset_symbol", "rate_override", "archived", "created_at"} <= cols
+    cols = {c["name"] for c in insp.get_columns("target_slices")}
+    assert {"id", "target_id", "account_id", "allocation_kind", "allocation_value"} <= cols
+
+
 def test_wal_mode_enabled():
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "test.db"

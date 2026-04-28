@@ -80,6 +80,30 @@ net_worth_snapshots = Table(
     Column("created_at", Text, server_default="(datetime('now'))"),
 )
 
+targets = Table(
+    "targets", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", Text, nullable=False),
+    Column("type", Text, nullable=False),  # 'asset' | 'bucket'
+    Column("target_amount", Real, nullable=False),
+    Column("asset_account_id", Text),  # NULL si type='bucket'
+    Column("asset_symbol", Text),       # NULL si type='bucket'
+    Column("rate_override", Real),      # NULL = auto
+    Column("archived", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, server_default="(datetime('now'))"),
+)
+
+target_slices = Table(
+    "target_slices", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("target_id", Integer, ForeignKey("targets.id", ondelete="CASCADE"), nullable=False),
+    Column("account_id", Text, nullable=False),
+    Column("allocation_kind", Text, nullable=False),  # 'amount' | 'percent'
+    Column("allocation_value", Real, nullable=False),
+)
+
+Index("idx_target_slices_target", target_slices.c.target_id)
+
 Index("idx_snapshots_account_date", balance_snapshots.c.account_id, balance_snapshots.c.date)
 Index("idx_transactions_account_date", transactions.c.account_id, transactions.c.date)
 Index("idx_performance_connector_period", performance.c.connector_id, performance.c.period_start)
