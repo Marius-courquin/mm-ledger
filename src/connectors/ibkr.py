@@ -74,6 +74,45 @@ class IBKRWorker(ConnectorWorker):
             return ("127.0.0.1", port)
         return (self._container_name, port)
 
+    # --- Persistance de session ---
+
+    def serialize_session(self) -> dict | None:
+        if not self._ib or not self._ib.isConnected():
+            return None
+        # Stocke les paramètres de connexion pour reconnecter sans relancer le container
+        return {
+            "host": getattr(self, "_session_host", None),
+            "port": getattr(self, "_session_port", None),
+            "client_id": getattr(self, "_session_client_id", 1),
+            "account_id": getattr(self, "_session_account_id", None),
+        }
+
+    def restore_session(self, blob: dict) -> bool:
+        """Tente de se reconnecter au container ib-gateway déjà en cours d'exécution.
+        Ne relance PAS le container — si le container est down, retourne False
+        et le connect() normal le relancera."""
+        host = blob.get("host")
+        port = blob.get("port")
+        client_id = blob.get("client_id", 1)
+        if not host or not port:
+            return False
+        try:
+            ib = IB()
+            ib.connect(host, port, clientId=client_id, timeout=5)
+            if not ib.isConnected():
+                return False
+            self._ib = ib
+            self._session_host = host
+            self._session_port = port
+            self._session_client_id = client_id
+            self._session_account_id = blob.get("account_id")
+            log.info("IBKR: restore_session — reconnecté au gateway existant (host=%s port=%s)", host, port)
+            self.event_queue.put({"type": "status", "state": "connected"})
+            return True
+        except Exception as e:
+            log.warning("IBKR: restore_session KO (%s) — fallback sur connect() complet", type(e).__name__)
+            return False
+
     # ── contract methods ────────────────────────────────────────────────
 
     def connect(self, credentials: dict) -> None:
@@ -157,6 +196,12 @@ class IBKRWorker(ConnectorWorker):
             )
 
         log.info("IBKR: connector=%s action=connect result=ok", self._safe_key())
+        # Stocke les paramètres pour restore_session au prochain restart
+        self._session_host = gateway_host
+        self._session_port = gateway_port
+        self._session_client_id = 1
+        accounts = self._ib.managedAccounts()
+        self._session_account_id = accounts[0] if accounts else None
         self.event_queue.put({"type": "status", "state": "connected"})
 
         # 5. Fetch initial (accounts/balances/positions) pour peupler le live_data.
