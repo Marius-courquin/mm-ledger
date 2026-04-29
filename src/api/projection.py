@@ -91,19 +91,25 @@ def _collect_account_data(engine, user_id: str) -> tuple[dict[str, str], dict[st
                     values_by_id[acc_id] = float(balance)
 
             # Positions (TR/IBKR : valeur des actifs détenus)
+            # Le format live ne donne pas toujours un account_id propre — souvent juste un
+            # `label` ("CTO", "PEA") par groupe. On utilise une stratégie en cascade :
+            # 1. Si on trouve un account_id explicite (securitiesAccountNumber / account / id),
+            #    on l'utilise (permet l'override fin par compte courtier).
+            # 2. Sinon, on agrège la valeur des positions sous une clé synthétique
+            #    par (connecteur, label) — `{cid}:{label}` — ou `{cid}:positions` en
+            #    dernier recours. Ça garantit qu'aucune position n'est ignorée.
             raw_positions = data.get("positions", [])
             if isinstance(raw_positions, list):
                 for acc_data in raw_positions:
                     if not isinstance(acc_data, dict):
                         continue
-                    acc_id = (
+                    explicit_id = (
                         acc_data.get("securitiesAccountNumber")
                         or acc_data.get("account")
                         or acc_data.get("id")
-                        or ""
                     )
-                    if not acc_id:
-                        continue
+                    label = acc_data.get("label") or "positions"
+                    acc_id = explicit_id if explicit_id else f"{cid}:{label}"
                     accounts_by_id.setdefault(acc_id, ctype)
                     acc_value = 0.0
                     for cat_data in acc_data.get("categories", []):
