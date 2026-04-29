@@ -13,6 +13,7 @@ import { Objectifs } from "@/pages/Objectifs";
 import { ObjectifDetail } from "@/pages/ObjectifDetail";
 import { Prets } from "@/pages/Prets";
 import { Projection } from "@/pages/Projection";
+import { Budget } from "@/pages/Budget";
 import { Login } from "@/pages/Login";
 import { AdminSetup } from "@/pages/AdminSetup";
 import { AdminUsers } from "@/pages/AdminUsers";
@@ -108,6 +109,7 @@ function AppRoutes() {
               <Route path="/objectifs/:id" element={<ObjectifDetail />} />
               <Route path="/prets" element={<Prets />} />
               <Route path="/projection" element={<Projection />} />
+              <Route path="/budget" element={<Budget />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
               <Route path="/settings" element={<Settings />} />
