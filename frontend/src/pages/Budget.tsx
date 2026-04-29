@@ -18,6 +18,8 @@ export function Budget() {
   const [data, setData] = useState<BudgetView | null>(null);
   const [loading, setLoading] = useState(true);
   const [applyOpen, setApplyOpen] = useState(false);
+  const [sectionModal, setSectionModal] = useState<SectionType | null>(null);
+  const [itemModalSection, setItemModalSection] = useState<number | null>(null);
 
   async function load() {
     setLoading(true);
@@ -26,13 +28,6 @@ export function Budget() {
   }
 
   useEffect(() => { load(); }, []);
-
-  async function addSection(type: SectionType) {
-    const name = prompt('Nom de la section :');
-    if (!name?.trim()) return;
-    await createSection({ name: name.trim(), section_type: type });
-    load();
-  }
 
   if (loading || !data) {
     return <div className="text-sm text-mm-text-muted">Chargement…</div>;
@@ -57,14 +52,18 @@ export function Budget() {
           <div key={type} className="flex flex-col gap-3">
             <div className="flex items-center justify-between">
               <h2 className="text-base font-semibold text-mm-text">{label}</h2>
-              <button onClick={() => addSection(type)} className="text-xs text-mm-gold hover:underline">
+              <button onClick={() => setSectionModal(type)} className="text-xs text-mm-gold hover:underline">
                 + Section
               </button>
             </div>
             {data.sections
               .filter((s) => s.section_type === type)
               .map((s) => (
-                <SectionCard key={String(s.id)} section={s} onChange={load} />
+                <SectionCard
+                  key={String(s.id)} section={s}
+                  onChange={load}
+                  onAddItem={(sid) => setItemModalSection(sid)}
+                />
               ))}
             {data.sections.filter((s) => s.section_type === type).length === 0 && (
               <div className="text-xs text-mm-text-muted bg-mm-surface border border-mm-border border-dashed rounded-[8px] px-3 py-4 text-center">
@@ -99,6 +98,20 @@ export function Budget() {
         onClose={() => setApplyOpen(false)}
         onApplied={() => { setApplyOpen(false); load(); }}
       />
+
+      <SectionFormModal
+        isOpen={sectionModal !== null}
+        sectionType={sectionModal}
+        onClose={() => setSectionModal(null)}
+        onSaved={() => { setSectionModal(null); load(); }}
+      />
+
+      <ItemFormModal
+        isOpen={itemModalSection !== null}
+        sectionId={itemModalSection}
+        onClose={() => setItemModalSection(null)}
+        onSaved={() => { setItemModalSection(null); load(); }}
+      />
     </div>
   );
 }
@@ -114,7 +127,11 @@ function Total({ label, value, positive }: { label: string; value: number; posit
   );
 }
 
-function SectionCard({ section, onChange }: { section: BudgetSection; onChange: () => void }) {
+function SectionCard({ section, onChange, onAddItem }: {
+  section: BudgetSection;
+  onChange: () => void;
+  onAddItem: (sectionId: number) => void;
+}) {
   const total = section.items.reduce((s, i) => s + i.amount, 0);
 
   async function handleDeleteSection() {
@@ -124,15 +141,9 @@ function SectionCard({ section, onChange }: { section: BudgetSection; onChange: 
     onChange();
   }
 
-  async function handleAddItem() {
+  function handleAddItem() {
     if (section.is_virtual) return;
-    const label = prompt('Libellé :');
-    if (!label?.trim()) return;
-    const amountStr = prompt('Montant (€) :');
-    const amount = parseFloat(amountStr ?? '');
-    if (!Number.isFinite(amount)) return;
-    await createItem(section.id as number, { label: label.trim(), amount });
-    onChange();
+    onAddItem(section.id as number);
   }
 
   return (
@@ -244,6 +255,161 @@ function ItemRow({ item, virtual, onChange }: {
         >
           <Trash2 size={12} />
         </button>
+      </div>
+    </div>
+  );
+}
+
+const SECTION_TYPE_LABELS_FR: Record<SectionType, string> = {
+  income: 'Revenus',
+  fixed_expense: 'Charges fixes',
+  variable_expense: 'Charges variables',
+};
+
+function SectionFormModal({ isOpen, sectionType, onClose, onSaved }: {
+  isOpen: boolean;
+  sectionType: SectionType | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [name, setName] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) { setName(''); setError(null); }
+  }, [isOpen]);
+
+  if (!isOpen || !sectionType) return null;
+
+  async function submit() {
+    if (!name.trim()) { setError('Nom obligatoire'); return; }
+    setSubmitting(true);
+    try {
+      await createSection({ name: name.trim(), section_type: sectionType! });
+      onSaved();
+    } catch (e: any) {
+      setError(e?.detail ?? 'Erreur à la création');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-mm-surface border border-mm-border rounded-[12px] p-6 w-full max-w-md mx-4 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-mm-text">Nouvelle section</h2>
+        <p className="text-xs text-mm-text-muted">
+          Catégorie : <span className="text-mm-text">{SECTION_TYPE_LABELS_FR[sectionType]}</span>
+        </p>
+        <label className="flex flex-col gap-1">
+          <span className="text-xs text-mm-text-muted">Nom de la section</span>
+          <input
+            autoFocus
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+            placeholder="Ex. Logement, Salaires, Loisirs…"
+            className="px-3 py-2 bg-mm-surface-elevated border border-mm-border rounded-[8px] text-sm text-mm-text focus:outline-none focus:border-mm-gold"
+          />
+        </label>
+        {error && <p className="text-sm text-mm-loss">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-[8px] border border-mm-border text-mm-text-muted">
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="px-4 py-2 bg-mm-gold text-mm-bg text-sm font-semibold rounded-[8px] disabled:opacity-50"
+          >
+            {submitting ? 'Création…' : 'Créer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ItemFormModal({ isOpen, sectionId, onClose, onSaved }: {
+  isOpen: boolean;
+  sectionId: number | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [label, setLabel] = useState('');
+  const [amount, setAmount] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (isOpen) { setLabel(''); setAmount(''); setError(null); }
+  }, [isOpen]);
+
+  if (!isOpen || sectionId === null) return null;
+
+  async function submit() {
+    if (!label.trim()) { setError('Libellé obligatoire'); return; }
+    const a = parseFloat(amount);
+    if (!Number.isFinite(a)) { setError('Montant invalide'); return; }
+    setSubmitting(true);
+    try {
+      await createItem(sectionId!, { label: label.trim(), amount: a });
+      onSaved();
+    } catch (e: any) {
+      setError(e?.detail ?? 'Erreur à la création');
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60" onClick={onClose}>
+      <div
+        className="bg-mm-surface border border-mm-border rounded-[12px] p-6 w-full max-w-md mx-4 flex flex-col gap-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h2 className="text-lg font-semibold text-mm-text">Nouvel item</h2>
+        <div className="flex flex-col gap-3">
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-mm-text-muted">Libellé</span>
+            <input
+              autoFocus
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              placeholder="Ex. Loyer, Netflix, Courses…"
+              className="px-3 py-2 bg-mm-surface-elevated border border-mm-border rounded-[8px] text-sm text-mm-text focus:outline-none focus:border-mm-gold"
+            />
+          </label>
+          <label className="flex flex-col gap-1">
+            <span className="text-xs text-mm-text-muted">Montant mensuel (€)</span>
+            <input
+              type="number"
+              value={amount}
+              onChange={(e) => setAmount(e.target.value)}
+              onKeyDown={(e) => { if (e.key === 'Enter') submit(); }}
+              placeholder="0"
+              className="px-3 py-2 bg-mm-surface-elevated border border-mm-border rounded-[8px] text-sm text-mm-text font-mono focus:outline-none focus:border-mm-gold"
+            />
+          </label>
+        </div>
+        {error && <p className="text-sm text-mm-loss">{error}</p>}
+        <div className="flex justify-end gap-2 pt-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-[8px] border border-mm-border text-mm-text-muted">
+            Annuler
+          </button>
+          <button
+            onClick={submit}
+            disabled={submitting}
+            className="px-4 py-2 bg-mm-gold text-mm-bg text-sm font-semibold rounded-[8px] disabled:opacity-50"
+          >
+            {submitting ? 'Création…' : 'Créer'}
+          </button>
+        </div>
       </div>
     </div>
   );
