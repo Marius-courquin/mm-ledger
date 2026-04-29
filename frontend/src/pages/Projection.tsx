@@ -122,7 +122,7 @@ export function Projection() {
             value={settings.market_monthly_contribution}
             onChange={(v) => patchSettings({ market_monthly_contribution: v })}
           />
-          <div className="col-span-2 flex items-center gap-3">
+          <div className="col-span-2 flex items-center gap-3 flex-wrap">
             <span className="text-xs text-mm-text-muted">Horizon</span>
             <div className="flex gap-1">
               {HORIZON_OPTIONS.map((h) => {
@@ -142,6 +142,7 @@ export function Projection() {
                 );
               })}
             </div>
+            <HorizonCustomInput value={settings.horizon_years} onChange={(v) => patchSettings({ horizon_years: v })} />
           </div>
         </div>
       </div>
@@ -368,5 +369,39 @@ function NumberInput({ label, value, onChange }: {
         className="px-3 py-2 bg-mm-surface-elevated border border-mm-border rounded-[8px] text-sm text-mm-text focus:outline-none focus:border-mm-gold"
       />
     </label>
+  );
+}
+
+function HorizonCustomInput({ value, onChange }: {
+  value: number; onChange: (v: number) => void;
+}) {
+  const [local, setLocal] = useState(String(value));
+  const isPreset = HORIZON_OPTIONS.includes(value);
+  useEffect(() => { setLocal(String(value)); }, [value]);
+
+  function commit() {
+    const v = parseInt(local, 10);
+    if (Number.isNaN(v) || v < 1 || v > 50) {
+      setLocal(String(value));
+      return;
+    }
+    if (v !== value) onChange(v);
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-mm-text-muted">ou</span>
+      <input
+        type="number" min={1} max={50}
+        value={local}
+        onChange={(e) => setLocal(e.target.value)}
+        onBlur={commit}
+        onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+        className={`w-16 px-2 py-1.5 bg-mm-surface-elevated border rounded-[6px] text-xs text-mm-text font-mono text-right focus:outline-none focus:border-mm-gold ${
+          !isPreset ? 'border-mm-gold text-mm-gold' : 'border-mm-border'
+        }`}
+      />
+      <span className="text-xs text-mm-text-muted">ans (1–50)</span>
+    </div>
   );
 }
