@@ -471,6 +471,37 @@ class TradeRepublicWorker(ConnectorWorker):
             "currency": "EUR",
         }
 
+    # --- Persistance de session ---
+
+    def serialize_session(self) -> dict | None:
+        token = getattr(self, "_session_token", None)
+        if not token:
+            return None
+        return {"session_token": token}
+
+    def restore_session(self, blob: dict) -> bool:
+        token = blob.get("session_token")
+        if not token:
+            return False
+        self._session_token = token
+        # Ping de validation : ouvre une WS temporaire et souscrit à accountInfo
+        try:
+            import websockets.sync.client as ws_client
+            with ws_client.connect(
+                "wss://api.traderepublic.com", close_timeout=5, open_timeout=10
+            ) as ws:
+                self._ws_connect(ws)
+                resp = self._ws_sub(ws, {"type": "accountPairs", "token": self._session_token})
+                if not resp:
+                    return False
+            log.info("TR: restore_session — session valide")
+            self.event_queue.put({"type": "status", "state": "connected"})
+            return True
+        except Exception as e:
+            log.warning(f"TR: restore_session ping KO ({e}), fallback sur connect() complet")
+            self._session_token = None
+            return False
+
     # --- WebSocket helpers (exact protocol from trade_republic_scraper) ---
 
     _ws_msg_id = 0
