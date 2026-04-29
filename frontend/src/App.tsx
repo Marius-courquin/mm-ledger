@@ -11,6 +11,7 @@ import { AccountDetail } from "@/pages/AccountDetail";
 import { Settings } from "@/pages/Settings";
 import { Objectifs } from "@/pages/Objectifs";
 import { ObjectifDetail } from "@/pages/ObjectifDetail";
+import { Prets } from "@/pages/Prets";
 import { Login } from "@/pages/Login";
 import { AdminSetup } from "@/pages/AdminSetup";
 import { AdminUsers } from "@/pages/AdminUsers";
@@ -104,6 +105,7 @@ function AppRoutes() {
               <Route path="/portfolio" element={<Portfolio />} />
               <Route path="/objectifs" element={<Objectifs />} />
               <Route path="/objectifs/:id" element={<ObjectifDetail />} />
+              <Route path="/prets" element={<Prets />} />
               <Route path="/accounts" element={<Accounts />} />
               <Route path="/accounts/:id" element={<AccountDetail />} />
               <Route path="/settings" element={<Settings />} />
