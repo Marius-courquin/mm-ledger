@@ -10,10 +10,13 @@ import { formatCurrency } from '@/lib/format';
 
 const HORIZON_OPTIONS = [5, 10, 20, 30];
 
+type ChartMode = 'composition' | 'performance';
+
 export function Projection() {
   const [data, setData] = useState<ProjectionResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [showOverrides, setShowOverrides] = useState(false);
+  const [chartMode, setChartMode] = useState<ChartMode>('performance');
 
   async function load() {
     setLoading(true);
@@ -59,7 +62,12 @@ export function Projection() {
     cash: p.cash,
     market: p.market,
     total: p.total,
+    principal: p.principal,
+    // Plus-value clampée à 0 pour le mode empilé (si négative, on ne la stack pas — sinon visuellement louche).
+    gain: Math.max(0, p.gain),
+    gain_raw: p.gain,
   }));
+  const lastPoint = points[points.length - 1];
 
   return (
     <div className="flex flex-col gap-6">
@@ -138,7 +146,57 @@ export function Projection() {
 
       {/* Courbe empilée */}
       <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5">
-        <div className="text-sm font-medium text-mm-text mb-3">Évolution projetée</div>
+        <div className="flex items-center justify-between mb-3">
+          <div className="text-sm font-medium text-mm-text">Évolution projetée</div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => setChartMode('performance')}
+              className={`px-3 py-1.5 text-xs rounded-[6px] border transition-colors ${
+                chartMode === 'performance'
+                  ? 'border-mm-gold text-mm-gold bg-mm-surface-elevated'
+                  : 'border-transparent text-mm-text-muted'
+              }`}
+            >
+              Principal / Plus-value
+            </button>
+            <button
+              onClick={() => setChartMode('composition')}
+              className={`px-3 py-1.5 text-xs rounded-[6px] border transition-colors ${
+                chartMode === 'composition'
+                  ? 'border-mm-gold text-mm-gold bg-mm-surface-elevated'
+                  : 'border-transparent text-mm-text-muted'
+              }`}
+            >
+              Cash / Marché
+            </button>
+          </div>
+        </div>
+
+        {/* Résumé "à terme" */}
+        {lastPoint && (
+          <div className="flex items-center gap-6 mb-4 text-sm">
+            <div>
+              <div className="text-[11px] text-mm-text-muted">Total à {settings.horizon_years} ans</div>
+              <div className="font-mono text-mm-text text-lg">{formatCurrency(lastPoint.total, 'EUR')}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-mm-text-muted">Principal investi</div>
+              <div className="font-mono text-mm-text">{formatCurrency(lastPoint.principal, 'EUR')}</div>
+            </div>
+            <div>
+              <div className="text-[11px] text-mm-text-muted">Plus-value</div>
+              <div className={`font-mono ${lastPoint.gain >= 0 ? 'text-mm-gain' : 'text-mm-loss'}`}>
+                {lastPoint.gain >= 0 ? '+' : ''}{formatCurrency(lastPoint.gain, 'EUR')}
+                {lastPoint.principal > 0 && (
+                  <span className="text-[11px] text-mm-text-muted ml-2">
+                    ({((lastPoint.gain / lastPoint.principal) * 100).toFixed(1)} %)
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         <ResponsiveContainer width="100%" height={320}>
           <AreaChart data={chartData} margin={{ top: 8, right: 16, bottom: 0, left: 0 }}>
             <defs>
@@ -149,6 +207,14 @@ export function Projection() {
               <linearGradient id="projMarket" x1="0" y1="0" x2="0" y2="1">
                 <stop offset="0%" stopColor="var(--mm-accent-gold)" stopOpacity={0.5} />
                 <stop offset="100%" stopColor="var(--mm-accent-gold)" stopOpacity={0.05} />
+              </linearGradient>
+              <linearGradient id="projPrincipal" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="rgba(226,207,234,0.5)" stopOpacity={0.4} />
+                <stop offset="100%" stopColor="rgba(226,207,234,0.5)" stopOpacity={0.05} />
+              </linearGradient>
+              <linearGradient id="projGain" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="var(--mm-gain)" stopOpacity={0.55} />
+                <stop offset="100%" stopColor="var(--mm-gain)" stopOpacity={0.08} />
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#1a3d4d40" horizontal vertical={false} />
@@ -165,14 +231,41 @@ export function Projection() {
             />
             <Tooltip
               contentStyle={{ backgroundColor: '#143a42', border: '1px solid #1a3d4d', borderRadius: 8, color: '#f0ece4', fontSize: 12 }}
-              formatter={(v: number, name: string) => [formatCurrency(v, 'EUR'), name === 'cash' ? 'Cash' : 'Marché']}
+              formatter={(v: number, name: string, item: any) => {
+                if (name === 'gain') {
+                  // Affiche la plus-value brute (peut être négative) plutôt que la version clampée
+                  const raw = item?.payload?.gain_raw ?? v;
+                  return [formatCurrency(raw, 'EUR'), 'Plus-value'];
+                }
+                const labels: Record<string, string> = {
+                  cash: 'Cash',
+                  market: 'Marché',
+                  principal: 'Principal',
+                };
+                return [formatCurrency(v, 'EUR'), labels[name] ?? name];
+              }}
               labelFormatter={(y: number) => `Dans ${y.toFixed(1)} ans`}
             />
             <Legend wrapperStyle={{ fontSize: 11, color: '#e2cfea' }} />
-            <Area type="monotone" dataKey="cash" stackId="1" name="Cash" stroke="var(--mm-gain)" fill="url(#projCash)" />
-            <Area type="monotone" dataKey="market" stackId="1" name="Marché" stroke="var(--mm-accent-gold)" fill="url(#projMarket)" />
+            {chartMode === 'composition' ? (
+              <>
+                <Area type="monotone" dataKey="cash" stackId="1" name="Cash" stroke="var(--mm-gain)" fill="url(#projCash)" />
+                <Area type="monotone" dataKey="market" stackId="1" name="Marché" stroke="var(--mm-accent-gold)" fill="url(#projMarket)" />
+              </>
+            ) : (
+              <>
+                <Area type="monotone" dataKey="principal" stackId="1" name="Principal" stroke="rgba(226,207,234,0.6)" fill="url(#projPrincipal)" />
+                <Area type="monotone" dataKey="gain" stackId="1" name="Plus-value" stroke="var(--mm-gain)" fill="url(#projGain)" />
+              </>
+            )}
           </AreaChart>
         </ResponsiveContainer>
+
+        {chartMode === 'performance' && (
+          <p className="text-[11px] text-mm-text-muted mt-2">
+            Principal = capital initial + apports cumulés. Plus-value = total − principal (intérêts composés générés).
+          </p>
+        )}
       </div>
 
       {/* Cards "à X ans" */}

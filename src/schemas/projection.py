@@ -38,6 +38,8 @@ class ProjectionPoint(BaseModel):
     market: float
     total: float
     loan_monthly_active: float
+    principal: float  # capital initial + apports cumulés jusqu'à ce mois
+    gain: float       # total - principal (plus-value / intérêts composés)
 
 
 class ProjectionStartingState(BaseModel):

@@ -21,6 +21,8 @@ export interface ProjectionPoint {
   market: number;
   total: number;
   loan_monthly_active: number;
+  principal: number;
+  gain: number;
 }
 
 export interface ProjectionStartingState {
