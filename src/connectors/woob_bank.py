@@ -26,6 +26,34 @@ class WoobWorker(ConnectorWorker):
             shutil.copy2(f, target / f.name)
             log.info(f"Patched {f.name}")
 
+    # --- Persistance de session ---
+
+    def serialize_session(self) -> dict | None:
+        if not self._backend:
+            return None
+        try:
+            storage = getattr(self._backend, "storage", None)
+            if storage is None:
+                return None
+            # StandardStorage.config.values est le dict YAML en mémoire
+            raw = getattr(getattr(storage, "config", None), "values", None)
+            if not raw:
+                return None
+            import copy
+            return {"woob_storage": copy.deepcopy(raw)}
+        except Exception as e:
+            log.warning(f"Woob: serialize_session échoué ({e})")
+            return None
+
+    def restore_session(self, blob: dict) -> bool:
+        """Restoration Woob v1 : no-op.
+        La storage Woob est sérialisée dans serialize_session, mais la restauration
+        nécessite les credentials (pour load_backend) qui ne sont pas disponibles
+        dans restore_session (ils arrivent séparément dans connect()). Retourne False
+        pour déclencher un connect() complet. v2 : passer storage + creds ensemble.
+        """
+        return False
+
     def connect(self, credentials: dict):
         self.event_queue.put({"type": "status", "state": "connecting"})
         try:
