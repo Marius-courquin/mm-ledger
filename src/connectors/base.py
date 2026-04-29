@@ -34,6 +34,29 @@ class ConnectorWorker(ABC):
         Défaut vide — overridable par les connecteurs qui exposent executions + prix historiques."""
         return {"transactions": [], "historical_prices": {}, "account_id": ""}
 
+    # --- Persistance de session (override par connecteur) ---
+
+    def serialize_session(self) -> dict | None:
+        """Override pour exporter l'état d'auth courant. None = ne rien persister."""
+        return None
+
+    def restore_session(self, blob: dict) -> bool:
+        """Override pour réinjecter un blob de session.
+        Doit pinger un endpoint léger pour valider.
+        Renvoie True si la session a été restaurée et est valide, False sinon."""
+        return False
+
+    def _emit_session_save(self):
+        """Helper pour pousser un event de sauvegarde de session vers le manager."""
+        blob = None
+        try:
+            blob = self.serialize_session()
+        except Exception as e:
+            self.event_queue.put({"type": "error", "message": f"serialize_session failed: {e}"})
+            return
+        if blob is not None:
+            self.event_queue.put({"type": "session_save", "session": blob})
+
     def run(self):
         while True:
             cmd = self.cmd_queue.get()
@@ -42,8 +65,24 @@ class ConnectorWorker(ABC):
                 self.event_queue.put({"type": "status", "state": "disconnected"})
                 break
             try:
+                if cmd["type"] == "connect":
+                    creds = cmd.get("credentials", {})
+                    session_blob = cmd.get("session_blob")
+                    restored = False
+                    if session_blob:
+                        try:
+                            restored = self.restore_session(session_blob)
+                        except Exception:
+                            restored = False
+                    if not restored:
+                        self.connect(creds)
+                    # Persiste la session courante après connect réussi
+                    self._emit_session_save()
+                    continue
+                if cmd["type"] == "save_session":
+                    self._emit_session_save()
+                    continue
                 handler = {
-                    "connect": lambda: self.connect(cmd.get("credentials", {})),
                     "disconnect": self.disconnect,
                     "fetch_accounts": self.fetch_accounts,
                     "fetch_positions": self.fetch_positions,
