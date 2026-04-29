@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom';
-import { Landmark, LayoutDashboard, PieChart, Wallet, Settings, Users, LogOut, ShieldCheck, User, Target, Banknote } from 'lucide-react';
+import { Landmark, LayoutDashboard, PieChart, Wallet, Settings, Users, LogOut, ShieldCheck, User, Target, Banknote, LineChart } from 'lucide-react';
 import { useApp } from '@/context/AppContext';
 import { logout } from '@/api/auth';
 
@@ -8,6 +8,7 @@ const navItems = [
   { to: '/portfolio', label: 'Portfolio', icon: PieChart },
   { to: '/objectifs', label: 'Objectifs', icon: Target },
   { to: '/prets', label: 'Prêts', icon: Banknote },
+  { to: '/projection', label: 'Projection', icon: LineChart },
   { to: '/accounts', label: 'Comptes', icon: Wallet },
   { to: '/settings', label: 'Paramètres', icon: Settings },
 ];
