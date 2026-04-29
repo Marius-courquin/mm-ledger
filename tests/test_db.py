@@ -50,6 +50,23 @@ def test_loans_table_created(tmp_path):
             "total_months", "start_date", "archived", "created_at"} <= cols
 
 
+def test_projection_tables_created(tmp_path):
+    from src.db.engine import create_engine_and_tables
+    from src.db.models import projection_settings, account_classification
+    from sqlalchemy import inspect
+
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    insp = inspect(engine)
+    assert "projection_settings" in insp.get_table_names()
+    assert "account_classification" in insp.get_table_names()
+    cols = {c["name"] for c in insp.get_columns("projection_settings")}
+    assert {"id", "cash_annual_rate", "market_annual_rate",
+            "cash_monthly_contribution", "market_monthly_contribution",
+            "horizon_years"} <= cols
+    cols = {c["name"] for c in insp.get_columns("account_classification")}
+    assert {"account_id", "category"} <= cols
+
+
 def test_wal_mode_enabled():
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "test.db"

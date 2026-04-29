@@ -139,3 +139,19 @@ loans = Table(
     Column("archived", Integer, nullable=False, server_default="0"),
     Column("created_at", Text, server_default="(datetime('now'))"),
 )
+
+projection_settings = Table(
+    "projection_settings", metadata,
+    Column("id", Integer, primary_key=True),  # toujours = 1
+    Column("cash_annual_rate", Real, nullable=False, server_default="0.02"),
+    Column("market_annual_rate", Real, nullable=False, server_default="0.05"),
+    Column("cash_monthly_contribution", Real, nullable=False, server_default="0"),
+    Column("market_monthly_contribution", Real, nullable=False, server_default="0"),
+    Column("horizon_years", Integer, nullable=False, server_default="10"),
+)
+
+account_classification = Table(
+    "account_classification", metadata,
+    Column("account_id", Text, primary_key=True),
+    Column("category", Text, nullable=False),  # 'cash' | 'market'
+)
