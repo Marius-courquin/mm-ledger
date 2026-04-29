@@ -9,8 +9,6 @@ import {
   TrendingUp,
 } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
-import { PortfolioPerfChart } from '@/components/PortfolioPerfChart';
-import { getPerformanceHistory, type PerfHistory } from '@/api/performance';
 import { useApp } from '@/context/AppContext';
 import {
   getConnectorStatus,
@@ -31,16 +29,6 @@ import type {
   WorkerInfo,
   WorkerState,
 } from '@/lib/types';
-
-const PERIODS = ['1W', '1M', '3M', '1Y', 'All'] as const;
-
-function periodLabelFr(p: string): string {
-  const map: Record<string, string> = {
-    '1W': '7 jours', '1M': '1 mois', '3M': '3 mois', '1Y': '1 an', 'All': 'tout',
-  };
-  return map[p] ?? p;
-}
-
 
 const statusLabels: Record<WorkerState, string> = {
   connected: 'Connecté',
@@ -71,8 +59,6 @@ export function AccountDetail() {
   const [accounts, setAccounts] = useState<Account[]>([]);
   const [balances, setBalances] = useState<Balance[]>([]);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [activePeriod, setActivePeriod] = useState<string>('3M');
-  const [perfHistory, setPerfHistory] = useState<PerfHistory | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -144,14 +130,6 @@ export function AccountDetail() {
 
   const workerState: WorkerState = workerInfo?.state ?? connector?.worker?.state ?? 'disconnected';
   const isConnected = workerState === 'connected';
-
-  // Fetch perf history scopé par connector_id, refetch on period change
-  useEffect(() => {
-    if (!id) return;
-    getPerformanceHistory({ period: activePeriod, connector_id: id })
-      .then(setPerfHistory)
-      .catch(() => setPerfHistory(null));
-  }, [id, activePeriod]);
 
   async function handleConnect() {
     if (!id) return;
@@ -270,17 +248,7 @@ export function AccountDetail() {
         />
       </div>
 
-      {/* Courbe perf TWR scopée par connecteur */}
-      <PortfolioPerfChart
-        series={perfHistory?.series ?? []}
-        totalPct={perfHistory?.total_pct ?? 0}
-        valueNow={perfHistory?.value_now ?? 0}
-        currency={perfHistory?.currency ?? currency}
-        periods={[...PERIODS]}
-        activePeriod={activePeriod}
-        onPeriodChange={setActivePeriod}
-        periodLabel={periodLabelFr(activePeriod)}
-      />
+      {/* Courbe perf masquée — cf. Dashboard.tsx pour la raison (TWR TR non fiable). */}
 
       {/* Transactions Table */}
       <div className="bg-mm-surface border border-mm-border rounded-[12px] overflow-hidden">

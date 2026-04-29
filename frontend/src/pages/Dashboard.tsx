@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
-import { PortfolioPerfChart } from '@/components/PortfolioPerfChart';
-import { getPerformanceHistory, type PerfHistory } from '@/api/performance';
 import { AccountRow } from '@/components/AccountRow';
 import { ObjectifsCard } from '@/components/ObjectifsCard';
 import { useApp } from '@/context/AppContext';
@@ -12,15 +10,6 @@ import { getNetWorth } from '@/api/networth';
 import { getCashflow } from '@/api/cashflow';
 import { formatCurrency, formatPercent, formatDate, getGreeting } from '@/lib/format';
 import type { Account, Balance, Portfolio } from '@/lib/types';
-
-const PERIODS = ['1W', '1M', '3M', '1Y', 'All'] as const;
-
-function periodLabelFr(p: string): string {
-  const map: Record<string, string> = {
-    '1W': '7 jours', '1M': '1 mois', '3M': '3 mois', '1Y': '1 an', 'All': 'tout',
-  };
-  return map[p] ?? p;
-}
 
 const connectorIcons: Record<string, { icon: typeof TrendingUp; bg: string }> = {
   trade_republic: { icon: TrendingUp, bg: 'bg-[#1a3d4d]' },
@@ -71,11 +60,9 @@ export function Dashboard() {
   const [balances, setBalances] = useState<Record<string, Balance>>({});
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [netWorth, setNetWorth] = useState<NetWorthData | null>(null);
-  const [perfHistory, setPerfHistory] = useState<PerfHistory | null>(null);
   const [cashflow, setCashflow] = useState<CashflowData | null>(null);
   const [cashflowPeriod, setCashflowPeriod] = useState<string>('1M');
   const [includeInvestments, setIncludeInvestments] = useState(true);
-  const [activePeriod, setActivePeriod] = useState<string>('3M');
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -112,13 +99,6 @@ export function Dashboard() {
     setLoading(true);
     fetchAllData().finally(() => setLoading(false));
   }, []);
-
-  // Perf history fetch — refetch on period change
-  useEffect(() => {
-    getPerformanceHistory({ period: activePeriod })
-      .then(setPerfHistory)
-      .catch(() => setPerfHistory(null));
-  }, [activePeriod]);
 
   // Auto-refresh: poll every 5s while any worker is connected but portfolio is empty
   const hasConnectedWorker = connectors.some(c => c.worker?.state === 'connected');
@@ -298,17 +278,10 @@ export function Dashboard() {
         )}
       </div>
 
-      {/* Courbe de performance */}
-      <PortfolioPerfChart
-        series={perfHistory?.series ?? []}
-        totalPct={perfHistory?.total_pct ?? 0}
-        valueNow={perfHistory?.value_now ?? 0}
-        currency={perfHistory?.currency ?? currency}
-        periods={[...PERIODS]}
-        activePeriod={activePeriod}
-        onPeriodChange={setActivePeriod}
-        periodLabel={periodLabelFr(activePeriod)}
-      />
+      {/* Courbe de performance — masquée tant que la reconstruction historique n'est pas fiabilisée
+          (TR ne renvoie pas current_cash/current_positions, donc la courbe Valeur affiche le cash
+          flow accumulé au lieu de la valeur du portefeuille). À réintroduire quand on aura basé
+          la courbe sur balance_snapshots quotidiens uniquement. */}
 
       {/* Comptes connectés */}
       <div className="flex flex-col gap-3">
