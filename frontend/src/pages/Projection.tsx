@@ -249,16 +249,17 @@ export function Projection() {
               labelFormatter={(y: number) => `Dans ${y.toFixed(1)} ans`}
             />
             <Legend wrapperStyle={{ fontSize: 11, color: '#e2cfea' }} />
-            {chartMode === 'composition' ? (
-              <>
-                <Area type="monotone" dataKey="cash" stackId="1" name="Cash" stroke="var(--mm-gain)" fill="url(#projCash)" />
-                <Area type="monotone" dataKey="market" stackId="1" name="Marché" stroke="var(--mm-accent-gold)" fill="url(#projMarket)" />
-              </>
-            ) : (
-              <>
-                <Area type="monotone" dataKey="principal" stackId="1" name="Principal" stroke="#5b8aa3" strokeWidth={2} fill="url(#projPrincipal)" />
-                <Area type="monotone" dataKey="gain" stackId="1" name="Plus-value" stroke="var(--mm-gain)" strokeWidth={2} fill="url(#projGain)" />
-              </>
+            {chartMode === 'composition' && (
+              <Area type="monotone" dataKey="cash" stackId="1" name="Cash" stroke="var(--mm-gain)" fill="url(#projCash)" />
+            )}
+            {chartMode === 'composition' && (
+              <Area type="monotone" dataKey="market" stackId="1" name="Marché" stroke="var(--mm-accent-gold)" fill="url(#projMarket)" />
+            )}
+            {chartMode === 'performance' && (
+              <Area type="monotone" dataKey="principal" stackId="1" name="Principal" stroke="#5b8aa3" strokeWidth={2} fill="url(#projPrincipal)" />
+            )}
+            {chartMode === 'performance' && (
+              <Area type="monotone" dataKey="gain" stackId="1" name="Plus-value" stroke="var(--mm-gain)" strokeWidth={2} fill="url(#projGain)" />
             )}
           </AreaChart>
         </ResponsiveContainer>
