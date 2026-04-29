@@ -33,7 +33,14 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         deps.users_dir = data / "users"
 
         # Manager + connectors
-        deps.manager = ConnectorManager()
+        def _persist_session(user_id: str, connector_id: str, blob: dict | None) -> None:
+            vault = deps.get_vault(user_id)
+            if blob is None:
+                vault.clear_session(connector_id)
+            else:
+                vault.store_session(connector_id, blob)
+
+        deps.manager = ConnectorManager(session_persist=_persist_session)
         from src.scheduler import setup_scheduler, shutdown_scheduler
         setup_scheduler()
         from src.connectors.woob_bank import WoobWorker

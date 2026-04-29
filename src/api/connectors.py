@@ -140,7 +140,8 @@ def connect_connector(connector_id: str, user: AuthUser = Depends(get_current_us
         row = conn.execute(select(connectors).where(connectors.c.id == connector_id)).fetchone()
     if not row:
         raise HTTPException(404, "Connector not found.")
-    deps.manager.spawn(f"{user.id}:{connector_id}", row.type, creds)
+    session_blob = deps.get_vault(user.id).retrieve_session(connector_id)
+    deps.manager.spawn(f"{user.id}:{connector_id}", row.type, creds, session_blob=session_blob)
     return {"status": "connecting"}
 
 
@@ -159,7 +160,8 @@ def restart_connector(connector_id: str, user: AuthUser = Depends(get_current_us
         raise HTTPException(404, "Connector not found.")
     with deps.get_ledger(user.id).connect() as conn:
         row = conn.execute(select(connectors).where(connectors.c.id == connector_id)).fetchone()
-    deps.manager.spawn(f"{user.id}:{connector_id}", row.type, creds)
+    session_blob = deps.get_vault(user.id).retrieve_session(connector_id)
+    deps.manager.spawn(f"{user.id}:{connector_id}", row.type, creds, session_blob=session_blob)
     return {"status": "connecting"}
 
 

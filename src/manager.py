@@ -1,4 +1,5 @@
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from multiprocessing import Process, Queue
 
@@ -28,16 +29,18 @@ class WorkerHandle:
 
 
 class ConnectorManager:
-    def __init__(self):
+    def __init__(self, session_persist: Callable[[str, str, dict | None], None] | None = None):
         self._workers: dict[str, WorkerHandle] = {}
         self._worker_classes: dict[str, type] = {}
         # Live data cache — populated from worker events
         self.live_data: dict[str, dict] = {}  # connector_id -> {accounts, balances, positions}
+        # Callback optionnel pour persister/effacer les sessions dans le vault
+        self._session_persist = session_persist
 
     def register_worker_class(self, connector_type: str, cls: type):
         self._worker_classes[connector_type] = cls
 
-    def spawn(self, connector_id: str, connector_type: str, credentials: dict):
+    def spawn(self, connector_id: str, connector_type: str, credentials: dict, session_blob: dict | None = None):
         if connector_id in self._workers:
             self.stop(connector_id)
 
@@ -54,7 +57,7 @@ class ConnectorManager:
         handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
         self._workers[connector_id] = handle
         self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
-        cmd_q.put({"type": "connect", "credentials": credentials})
+        cmd_q.put({"type": "connect", "credentials": credentials, "session_blob": session_blob})
 
     def stop(self, connector_id: str):
         handle = self._workers.get(connector_id)
@@ -65,6 +68,13 @@ class ConnectorManager:
         if handle.process.is_alive():
             handle.process.terminate()
         handle.state = "disconnected"
+        # Efface la session persistée à l'arrêt du worker
+        if self._session_persist and ":" in connector_id:
+            user_id, cid = connector_id.split(":", 1)
+            try:
+                self._session_persist(user_id, cid, None)
+            except Exception:
+                pass
 
     def stop_all(self):
         for cid in list(self._workers):
@@ -92,6 +102,14 @@ class ConnectorManager:
                         handle.detail = event.get("message")
                     elif evt_type == "history_data":
                         self._persist_history_for_worker(cid, event.get("data", {}))
+                    elif evt_type == "session_save":
+                        if self._session_persist and ":" in cid:
+                            user_id, connector_id_only = cid.split(":", 1)
+                            blob = event.get("session")
+                            try:
+                                self._session_persist(user_id, connector_id_only, blob)
+                            except Exception:
+                                pass
                     elif evt_type in ("accounts", "balances", "positions", "transactions"):
                         # Cache live data
                         if cid not in self.live_data:
