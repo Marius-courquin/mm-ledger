@@ -14,6 +14,7 @@ from src.api.networth import router as networth_router
 from src.api.cashflow import router as cashflow_router
 from src.api.banking import router as banking_router
 from src.api.targets import router as targets_router
+from src.api.loans import router as loans_router
 
 api_router = APIRouter()
 api_router.include_router(auth_router)
@@ -31,3 +32,4 @@ api_router.include_router(networth_router)
 api_router.include_router(cashflow_router)
 api_router.include_router(banking_router)
 api_router.include_router(targets_router)
+api_router.include_router(loans_router)
