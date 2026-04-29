@@ -71,6 +71,13 @@ export function Projection() {
   }));
   const lastPoint = points[points.length - 1];
 
+  // Ticks à l'année pour X-axis (au lieu d'un par mois → 240 labels qui se répètent).
+  // Si l'horizon est grand on raréfie : 1 tick / 2 ans au-delà de 15 ans, 1 / 5 ans au-delà de 25 ans.
+  const tickStep = settings.horizon_years > 25 ? 5 : settings.horizon_years > 15 ? 2 : 1;
+  const xTicks: number[] = [];
+  for (let y = 0; y <= settings.horizon_years; y += tickStep) xTicks.push(y);
+  if (xTicks[xTicks.length - 1] !== settings.horizon_years) xTicks.push(settings.horizon_years);
+
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center justify-between">
@@ -223,14 +230,22 @@ export function Projection() {
             <CartesianGrid stroke="#1a3d4d40" horizontal vertical={false} />
             <XAxis
               dataKey="year"
-              tickFormatter={(y) => `${y.toFixed(0)} an${y >= 2 ? 's' : ''}`}
+              type="number"
+              domain={[0, settings.horizon_years]}
+              ticks={xTicks}
+              tickFormatter={(y) => `${y} an${y >= 2 ? 's' : ''}`}
               axisLine={false} tickLine={false}
-              tick={{ fill: 'rgba(226,207,234,0.5)', fontSize: 10 }}
+              tick={{ fill: 'rgba(226,207,234,0.5)', fontSize: 11 }}
             />
             <YAxis
               axisLine={false} tickLine={false}
-              tick={{ fill: 'rgba(226,207,234,0.5)', fontSize: 10 }}
-              tickFormatter={(v) => `${(v / 1000).toFixed(0)} k€`}
+              tick={{ fill: 'rgba(226,207,234,0.5)', fontSize: 11 }}
+              tickFormatter={(v) => {
+                if (v >= 1_000_000) return `${(v / 1_000_000).toFixed(1)} M€`;
+                if (v >= 1000) return `${Math.round(v / 1000)} k€`;
+                return `${Math.round(v)} €`;
+              }}
+              width={60}
             />
             <Tooltip
               contentStyle={{ backgroundColor: '#143a42', border: '1px solid #1a3d4d', borderRadius: 8, color: '#f0ece4', fontSize: 12 }}
