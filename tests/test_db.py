@@ -67,6 +67,21 @@ def test_projection_tables_created(tmp_path):
     assert {"account_id", "category"} <= cols
 
 
+def test_budget_tables_created(tmp_path):
+    from src.db.engine import create_engine_and_tables
+    from src.db.models import budget_sections, budget_items
+    from sqlalchemy import inspect
+
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    insp = inspect(engine)
+    assert "budget_sections" in insp.get_table_names()
+    assert "budget_items" in insp.get_table_names()
+    cols = {c["name"] for c in insp.get_columns("budget_sections")}
+    assert {"id", "name", "section_type", "position"} <= cols
+    cols = {c["name"] for c in insp.get_columns("budget_items")}
+    assert {"id", "section_id", "label", "amount", "position"} <= cols
+
+
 def test_wal_mode_enabled():
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "test.db"

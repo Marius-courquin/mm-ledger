@@ -155,3 +155,22 @@ account_classification = Table(
     Column("account_id", Text, primary_key=True),
     Column("category", Text, nullable=False),  # 'cash' | 'market'
 )
+
+budget_sections = Table(
+    "budget_sections", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", Text, nullable=False),
+    Column("section_type", Text, nullable=False),  # 'income' | 'fixed_expense' | 'variable_expense'
+    Column("position", Integer, nullable=False, server_default="0"),
+)
+
+budget_items = Table(
+    "budget_items", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("section_id", Integer, ForeignKey("budget_sections.id", ondelete="CASCADE"), nullable=False),
+    Column("label", Text, nullable=False),
+    Column("amount", Real, nullable=False),
+    Column("position", Integer, nullable=False, server_default="0"),
+)
+
+Index("idx_budget_items_section", budget_items.c.section_id)
