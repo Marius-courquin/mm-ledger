@@ -37,6 +37,19 @@ def test_targets_tables_created(tmp_path):
     assert {"id", "target_id", "account_id", "allocation_kind", "allocation_value"} <= cols
 
 
+def test_loans_table_created(tmp_path):
+    from src.db.engine import create_engine_and_tables
+    from src.db.models import loans
+    from sqlalchemy import inspect
+
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    insp = inspect(engine)
+    assert "loans" in insp.get_table_names()
+    cols = {c["name"] for c in insp.get_columns("loans")}
+    assert {"id", "name", "loan_type", "initial_capital", "monthly_payment",
+            "total_months", "start_date", "archived", "created_at"} <= cols
+
+
 def test_wal_mode_enabled():
     with tempfile.TemporaryDirectory() as tmp:
         db_path = Path(tmp) / "test.db"

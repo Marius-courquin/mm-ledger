@@ -126,3 +126,16 @@ Index(
     portfolio_history_daily.c.connector_id,
     portfolio_history_daily.c.date,
 )
+
+loans = Table(
+    "loans", metadata,
+    Column("id", Integer, primary_key=True, autoincrement=True),
+    Column("name", Text, nullable=False),
+    Column("loan_type", Text, nullable=False),  # 'immo' | 'conso' | 'auto' | 'other'
+    Column("initial_capital", Real, nullable=False),
+    Column("monthly_payment", Real, nullable=False),
+    Column("total_months", Integer, nullable=False),
+    Column("start_date", Text, nullable=False),  # ISO YYYY-MM-DD
+    Column("archived", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, server_default="(datetime('now'))"),
+)
