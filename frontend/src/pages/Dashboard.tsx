@@ -3,6 +3,7 @@ import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight } fr
 import { MetricCard } from '@/components/MetricCard';
 import { AccountRow } from '@/components/AccountRow';
 import { ObjectifsCard } from '@/components/ObjectifsCard';
+import { PretsCard } from '@/components/PretsCard';
 import { useApp } from '@/context/AppContext';
 import { getAccounts, getAccountBalance } from '@/api/accounts';
 import { getPortfolio } from '@/api/portfolio';
@@ -204,8 +205,11 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Card Objectifs */}
-      <ObjectifsCard />
+      {/* Cards ERP : Objectifs + Prêts */}
+      <div className="grid grid-cols-2 gap-4">
+        <ObjectifsCard />
+        <PretsCard />
+      </div>
 
       {/* Cashflow avec sélecteur de période */}
       <div className="bg-mm-surface border border-mm-border rounded-[12px] p-5">
