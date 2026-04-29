@@ -18,13 +18,15 @@ export function Projection() {
   const [showOverrides, setShowOverrides] = useState(false);
   const [chartMode, setChartMode] = useState<ChartMode>('performance');
 
-  async function load() {
-    setLoading(true);
+  // Premier load : montre le spinner. Les refresh suivants (slider, toggle) mettent
+  // à jour data en place SANS repasser par le state loading → pas de unmount du chart.
+  async function load(opts: { showSpinner?: boolean } = {}) {
+    if (opts.showSpinner) setLoading(true);
     try { setData(await computeProjection()); }
-    finally { setLoading(false); }
+    finally { if (opts.showSpinner) setLoading(false); }
   }
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => { load({ showSpinner: true }); }, []);
 
   async function patchSettings(patch: Partial<import('@/lib/projection').ProjectionSettings>) {
     if (!data) return;
@@ -209,12 +211,12 @@ export function Projection() {
                 <stop offset="100%" stopColor="var(--mm-accent-gold)" stopOpacity={0.05} />
               </linearGradient>
               <linearGradient id="projPrincipal" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="rgba(226,207,234,0.5)" stopOpacity={0.4} />
-                <stop offset="100%" stopColor="rgba(226,207,234,0.5)" stopOpacity={0.05} />
+                <stop offset="0%" stopColor="#5b8aa3" stopOpacity={0.85} />
+                <stop offset="100%" stopColor="#5b8aa3" stopOpacity={0.15} />
               </linearGradient>
               <linearGradient id="projGain" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stopColor="var(--mm-gain)" stopOpacity={0.55} />
-                <stop offset="100%" stopColor="var(--mm-gain)" stopOpacity={0.08} />
+                <stop offset="0%" stopColor="var(--mm-gain)" stopOpacity={0.85} />
+                <stop offset="100%" stopColor="var(--mm-gain)" stopOpacity={0.15} />
               </linearGradient>
             </defs>
             <CartesianGrid stroke="#1a3d4d40" horizontal vertical={false} />
@@ -254,8 +256,8 @@ export function Projection() {
               </>
             ) : (
               <>
-                <Area type="monotone" dataKey="principal" stackId="1" name="Principal" stroke="rgba(226,207,234,0.6)" fill="url(#projPrincipal)" />
-                <Area type="monotone" dataKey="gain" stackId="1" name="Plus-value" stroke="var(--mm-gain)" fill="url(#projGain)" />
+                <Area type="monotone" dataKey="principal" stackId="1" name="Principal" stroke="#5b8aa3" strokeWidth={2} fill="url(#projPrincipal)" />
+                <Area type="monotone" dataKey="gain" stackId="1" name="Plus-value" stroke="var(--mm-gain)" strokeWidth={2} fill="url(#projGain)" />
               </>
             )}
           </AreaChart>
