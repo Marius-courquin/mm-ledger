@@ -27,6 +27,7 @@ class Vault:
                 connector_type TEXT NOT NULL,
                 label TEXT,
                 data TEXT NOT NULL,
+                session TEXT,
                 created_at TEXT DEFAULT (datetime('now')),
                 updated_at TEXT DEFAULT (datetime('now'))
             )
@@ -39,6 +40,11 @@ class Vault:
             conn = sqlcipher3.connect(str(self._path), check_same_thread=False)
             conn.execute('PRAGMA key = "%s"' % password.replace('"', '""'))
             conn.execute("SELECT count(*) FROM credentials")
+            # Migration lazy : ajout colonne session si absente (vaults pré-existants)
+            cols = {r[1] for r in conn.execute("PRAGMA table_info(credentials)").fetchall()}
+            if "session" not in cols:
+                conn.execute("ALTER TABLE credentials ADD COLUMN session TEXT")
+                conn.commit()
             self._conn = conn
             return True
         except Exception:
@@ -88,6 +94,34 @@ class Vault:
             "SELECT connector_id, connector_type, label FROM credentials"
         ).fetchall()
         return [{"id": r[0], "type": r[1], "label": r[2]} for r in rows]
+
+    def store_session(self, connector_id: str, session: dict) -> None:
+        if not self._conn:
+            return
+        self._conn.execute(
+            "UPDATE credentials SET session = ?, updated_at = datetime('now') WHERE connector_id = ?",
+            (json.dumps(session), connector_id),
+        )
+        self._conn.commit()
+
+    def retrieve_session(self, connector_id: str) -> dict | None:
+        if not self._conn:
+            return None
+        row = self._conn.execute(
+            "SELECT session FROM credentials WHERE connector_id = ?", (connector_id,)
+        ).fetchone()
+        if not row or row[0] is None:
+            return None
+        return json.loads(row[0])
+
+    def clear_session(self, connector_id: str) -> None:
+        if not self._conn:
+            return
+        self._conn.execute(
+            "UPDATE credentials SET session = NULL, updated_at = datetime('now') WHERE connector_id = ?",
+            (connector_id,),
+        )
+        self._conn.commit()
 
     def change_password(self, old_password: str, new_password: str) -> bool:
         if not self._conn:
