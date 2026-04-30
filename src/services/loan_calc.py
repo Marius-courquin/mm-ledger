@@ -43,6 +43,7 @@ def compute_loan_state(
     if use_bank:
         amount_remaining = float(abs(linked_balance))
         months_remaining = int(round(amount_remaining / monthly))
+        months_remaining = max(0, min(months_remaining, loan["total_months"]))
         amount_source = "bank"
     else:
         amount_remaining = round(monthly * months_remaining_calendar, 2)
