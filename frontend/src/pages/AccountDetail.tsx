@@ -119,11 +119,11 @@ export function AccountDetail() {
   }, [balances]);
 
   const totalCash = useMemo(() => {
-    return balances.reduce((sum, b) => sum + b.cash, 0);
+    return balances.reduce((sum, b) => sum + (b.cash ?? 0), 0);
   }, [balances]);
 
   const totalPositionsValue = useMemo(() => {
-    return balances.reduce((sum, b) => sum + b.positions_value, 0);
+    return balances.reduce((sum, b) => sum + (b.positions_value ?? 0), 0);
   }, [balances]);
 
   const currency = balances[0]?.currency ?? 'EUR';

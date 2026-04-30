@@ -41,7 +41,9 @@ export function HoldingsTable({ positions, totalValue }: HoldingsTableProps) {
         </thead>
         <tbody>
           {positions.map((pos) => {
-            const weight = totalValue > 0 ? (pos.value / totalValue) * 100 : 0;
+            const value = pos.value ?? 0;
+            const pnlPct = pos.pnl_pct ?? 0;
+            const weight = totalValue > 0 ? (value / totalValue) * 100 : 0;
             return (
               <tr key={`${pos.account_id}-${pos.instrument}`} className="border-t border-mm-border">
                 <td className="px-5 py-3">
@@ -57,7 +59,7 @@ export function HoldingsTable({ positions, totalValue }: HoldingsTableProps) {
                 </td>
                 <td className="w-[110px] px-3 py-3 text-right">
                   <span className="text-[13px] font-medium text-mm-text tabular-nums">
-                    {formatCurrency(pos.value, pos.currency)}
+                    {formatCurrency(value, pos.currency)}
                   </span>
                 </td>
                 <td className="w-[70px] px-3 py-3 text-right">
@@ -68,10 +70,10 @@ export function HoldingsTable({ positions, totalValue }: HoldingsTableProps) {
                 <td className="w-[90px] px-3 py-3 text-right">
                   <span
                     className={`text-[13px] font-medium tabular-nums ${
-                      pos.pnl_pct >= 0 ? 'text-mm-gold' : 'text-mm-loss'
+                      pnlPct >= 0 ? 'text-mm-gold' : 'text-mm-loss'
                     }`}
                   >
-                    {formatPercent(pos.pnl_pct)}
+                    {formatPercent(pnlPct)}
                   </span>
                 </td>
               </tr>

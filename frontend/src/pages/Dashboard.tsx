@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react';
-import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight } from 'lucide-react';
+import { TrendingUp, Wallet, BarChart3, Trophy, ArrowDownLeft, ArrowUpRight, Receipt } from 'lucide-react';
 import { MetricCard } from '@/components/MetricCard';
 import { AccountRow } from '@/components/AccountRow';
 import { ObjectifsCard } from '@/components/ObjectifsCard';
@@ -11,12 +11,19 @@ import { getPortfolio } from '@/api/portfolio';
 import { getNetWorth } from '@/api/networth';
 import { getCashflow } from '@/api/cashflow';
 import { formatCurrency, formatPercent, formatDate, getGreeting } from '@/lib/format';
-import type { Account, Balance, Portfolio } from '@/lib/types';
+import type { Account, Balance, Portfolio, AccountKind } from '@/lib/types';
 
 const connectorIcons: Record<string, { icon: typeof TrendingUp; bg: string }> = {
   trade_republic: { icon: TrendingUp, bg: 'bg-[#1a3d4d]' },
   ibkr: { icon: BarChart3, bg: 'bg-[#2a1a4d]' },
   woob_bank: { icon: Wallet, bg: 'bg-[#1a4d3d]' },
+  banking: { icon: Wallet, bg: 'bg-[#1a4d3d]' },
+};
+
+const kindIcons: Record<AccountKind, { icon: typeof TrendingUp; bg: string }> = {
+  cash:       { icon: Wallet,     bg: 'bg-emerald-900/40' },
+  securities: { icon: TrendingUp, bg: 'bg-violet-900/40' },
+  liability:  { icon: Receipt,    bg: 'bg-rose-900/40' },
 };
 
 function connectorSubtitle(type: string): string {
@@ -24,6 +31,7 @@ function connectorSubtitle(type: string): string {
     case 'trade_republic': return 'Trade Republic';
     case 'ibkr': return 'Interactive Brokers';
     case 'woob_bank': return 'Banque';
+    case 'banking': return 'Open Banking';
     default: return type;
   }
 }
@@ -123,9 +131,7 @@ export function Dashboard() {
 
   const allPositions = useMemo(() => {
     if (!portfolio) return [];
-    return portfolio.accounts.flatMap(acc =>
-      acc.categories.flatMap(cat => cat.positions)
-    );
+    return portfolio.accounts.flatMap(acc => acc.positions);
   }, [portfolio]);
 
   const currency = useMemo(() => {
@@ -135,7 +141,7 @@ export function Dashboard() {
   const bestPerformer = useMemo(() => {
     if (allPositions.length === 0) return null;
     return allPositions.reduce((best, pos) =>
-      pos.pnl_pct > best.pnl_pct ? pos : best
+      (pos.pnl_pct ?? -Infinity) > (best.pnl_pct ?? -Infinity) ? pos : best
     );
   }, [allPositions]);
 
@@ -201,7 +207,7 @@ export function Dashboard() {
           label="Meilleure perf."
           value={bestPerformer?.name ?? '--'}
           valueClassName="text-[32px] font-bold text-mm-text"
-          sub={bestPerformer ? `${formatPercent(bestPerformer.pnl_pct)}` : 'Aucune position'}
+          sub={bestPerformer ? `${formatPercent(bestPerformer.pnl_pct ?? 0)}` : 'Aucune position'}
           icon={<Trophy size={12} className="text-mm-gold" />}
         />
       </div>
@@ -323,6 +329,8 @@ export function Dashboard() {
 
             return accts.map((acct) => {
               const bal = balances[acct.id];
+              const kindInfo = kindIcons[acct.kind] ?? kindIcons.cash;
+              const KindIcon = kindInfo.icon;
               return (
                 <AccountRow
                   key={acct.id}
@@ -330,8 +338,8 @@ export function Dashboard() {
                   subtitle={connectorSubtitle(connector.type)}
                   balance={bal ? formatCurrency(bal.total_value, bal.currency) : '--'}
                   perf={formatPercent(0)}
-                  iconBg={iconInfo.bg}
-                  icon={<IconComponent size={16} className="text-mm-text" />}
+                  iconBg={kindInfo.bg}
+                  icon={<KindIcon size={16} className="text-mm-text" />}
                 />
               );
             });
