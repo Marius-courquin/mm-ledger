@@ -217,3 +217,13 @@ def test_history_data_event_is_persisted_to_db(tmp_path, monkeypatch):
     dates = sorted(r.date for r in rows)
     assert dates == ["2026-01-01", "2026-01-02", "2026-01-03"]
     mgr.stop("user42:histconn")
+
+
+def test_worker_handle_stores_connector_type():
+    mgr = ConnectorManager()
+    mgr.register_worker_class("fake", FakeWorker)
+    mgr.spawn("user1:test", "fake", credentials={})
+    try:
+        assert mgr._workers["user1:test"].connector_type == "fake"
+    finally:
+        mgr.stop_all()

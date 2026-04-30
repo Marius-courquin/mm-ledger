@@ -23,6 +23,7 @@ class WorkerHandle:
     process: Process
     cmd_queue: Queue
     event_queue: Queue
+    connector_type: str = ""
     state: str = "connecting"
     detail: str | None = None
     started_at: float = field(default_factory=time.time)
@@ -54,7 +55,7 @@ class ConnectorManager:
             daemon=True,
         )
         proc.start()
-        handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
+        handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q, connector_type=connector_type)
         self._workers[connector_id] = handle
         self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
         cmd_q.put({"type": "connect", "credentials": credentials, "session_blob": session_blob})
