@@ -1,6 +1,8 @@
 from datetime import datetime
 from decimal import Decimal
 
+from src.normalizers import get_normalizer, register
+from src.normalizers.base import Normalizer
 from src.normalizers.types import CanonicalAccount, CanonicalBalance, CanonicalPosition
 
 
@@ -39,3 +41,18 @@ def test_canonical_position_value_decimal():
     )
     assert pos.asset_class == "equity"
     assert pos.value == Decimal("1805.00")
+
+
+def test_registry_get_returns_none_for_unknown():
+    assert get_normalizer("does_not_exist") is None
+
+
+def test_registry_register_and_get():
+    class StubNormalizer(Normalizer):
+        def normalize_accounts(self, raw, connector_id): return []
+        def normalize_balances(self, raw, accounts): return []
+        def normalize_positions(self, raw, accounts): return []
+
+    stub = StubNormalizer()
+    register("stub", stub)
+    assert get_normalizer("stub") is stub
