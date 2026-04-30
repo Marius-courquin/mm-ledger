@@ -40,6 +40,10 @@ class LoanResponse(LoanBase):
     amount_remaining: float
     progress_pct: float
     is_active: bool
+    # Lien compte bancaire (optionnel) :
+    linked_account_id: str | None = None
+    linked_label: str | None = None
+    amount_source: Literal["calendar", "bank"] = "calendar"
 
 
 class LoanSummary(BaseModel):

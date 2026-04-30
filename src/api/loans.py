@@ -13,6 +13,7 @@ router = APIRouter(prefix="/api/loans", tags=["loans"])
 
 
 def _row_to_response(row, today: _date) -> LoanResponse:
+    """Calcul calendaire pur (sans lien bancaire). Conservé pour rétrocompat interne."""
     state = compute_loan_state({
         "start_date": row.start_date,
         "total_months": row.total_months,
@@ -29,6 +30,55 @@ def _row_to_response(row, today: _date) -> LoanResponse:
         months_remaining=state["months_remaining"],
         amount_remaining=state["amount_remaining"],
         progress_pct=state["progress_pct"], is_active=state["is_active"],
+        amount_source=state["amount_source"],
+    )
+
+
+def _row_to_response_with_link(row, today: _date, user_id: str) -> LoanResponse:
+    """Idem _row_to_response, mais lit le lien + le solde bancaire si dispo."""
+    engine = deps.get_ledger(user_id)
+    linked_account_id = None
+    linked_balance = None
+    balance_as_of = None
+    linked_label = None
+    with engine.connect() as conn:
+        link = conn.execute(
+            select(loan_account_link).where(loan_account_link.c.loan_id == row.id)
+        ).fetchone()
+    if link:
+        linked_account_id = link.account_id
+        all_data = deps.manager.get_user_live_data(user_id)
+        for _cid, data in all_data.items():
+            for bal in data.get("balances", []):
+                if bal.account_id == linked_account_id:
+                    linked_balance = bal.total_value
+                    balance_as_of = bal.as_of
+                    break
+            for acc in data.get("accounts", []):
+                if acc.id == linked_account_id:
+                    linked_label = acc.label
+                    break
+
+    state = compute_loan_state({
+        "start_date": row.start_date, "total_months": row.total_months,
+        "monthly_payment": row.monthly_payment,
+        "initial_capital": row.initial_capital, "archived": row.archived,
+    }, today, linked_balance=linked_balance, balance_as_of=balance_as_of)
+
+    return LoanResponse(
+        id=row.id, name=row.name, loan_type=row.loan_type,
+        initial_capital=row.initial_capital, monthly_payment=row.monthly_payment,
+        total_months=row.total_months, start_date=row.start_date,
+        archived=bool(row.archived), created_at=row.created_at,
+        end_date=state["end_date"],
+        months_paid=state["months_paid"],
+        months_remaining=state["months_remaining"],
+        amount_remaining=state["amount_remaining"],
+        progress_pct=state["progress_pct"],
+        is_active=state["is_active"],
+        linked_account_id=linked_account_id,
+        linked_label=linked_label,
+        amount_source=state["amount_source"],
     )
 
 
@@ -43,7 +93,7 @@ def create_loan(payload: LoanCreate, user: AuthUser = Depends(get_current_user))
         ))
         lid = result.inserted_primary_key[0]
         row = conn.execute(select(loans).where(loans.c.id == lid)).fetchone()
-    return _row_to_response(row, _date.today())
+    return _row_to_response_with_link(row, _date.today(), user.id)
 
 
 @router.get("", response_model=list[LoanResponse])
@@ -55,7 +105,7 @@ def list_loans(archived: bool = False, user: AuthUser = Depends(get_current_user
             stmt = stmt.where(loans.c.archived == 0)
         rows = conn.execute(stmt.order_by(loans.c.id.desc())).fetchall()
     today = _date.today()
-    return [_row_to_response(r, today) for r in rows]
+    return [_row_to_response_with_link(r, today, user.id) for r in rows]
 
 
 @router.get("/summary", response_model=LoanSummary)
@@ -132,7 +182,7 @@ def link_account(
             conn.execute(insert(loan_account_link).values(
                 account_id=payload.account_id, loan_id=loan_id, ignored=0,
             ))
-    return _row_to_response(loan_row, _date.today())
+    return _row_to_response_with_link(loan_row, _date.today(), user.id)
 
 
 @router.delete("/{loan_id}/link", status_code=status.HTTP_204_NO_CONTENT)
@@ -212,7 +262,7 @@ def create_from_account(
                 account_id=payload.account_id, loan_id=lid, ignored=0,
             ))
         row = conn.execute(select(loans).where(loans.c.id == lid)).fetchone()
-    return _row_to_response(row, _date.today())
+    return _row_to_response_with_link(row, _date.today(), user.id)
 
 
 @router.get("/{loan_id}", response_model=LoanResponse)
@@ -222,7 +272,7 @@ def get_loan(loan_id: int, user: AuthUser = Depends(get_current_user)):
         row = conn.execute(select(loans).where(loans.c.id == loan_id)).fetchone()
         if not row:
             raise HTTPException(404, "Prêt introuvable")
-    return _row_to_response(row, _date.today())
+    return _row_to_response_with_link(row, _date.today(), user.id)
 
 
 @router.put("/{loan_id}", response_model=LoanResponse)
@@ -238,7 +288,7 @@ def update_loan(loan_id: int, payload: LoanUpdate, user: AuthUser = Depends(get_
         if values:
             conn.execute(update(loans).where(loans.c.id == loan_id).values(**values))
         row = conn.execute(select(loans).where(loans.c.id == loan_id)).fetchone()
-    return _row_to_response(row, _date.today())
+    return _row_to_response_with_link(row, _date.today(), user.id)
 
 
 @router.delete("/{loan_id}", status_code=status.HTTP_204_NO_CONTENT)

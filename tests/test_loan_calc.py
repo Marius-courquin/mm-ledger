@@ -1,4 +1,5 @@
-from datetime import date
+from datetime import date, datetime, timezone, timedelta
+from decimal import Decimal
 from src.services.loan_calc import compute_loan_state
 
 
@@ -58,3 +59,39 @@ def test_state_total_months_one():
     assert state["months_paid"] == 1
     assert state["months_remaining"] == 0
     assert state["progress_pct"] == 100.0
+
+
+def test_compute_with_recent_bank_balance_uses_bank():
+    loan = {
+        "start_date": date(2026, 1, 1),
+        "total_months": 24,
+        "monthly_payment": 200.0,
+        "initial_capital": 4000.0,
+        "archived": 0,
+    }
+    state = compute_loan_state(
+        loan, today=date(2026, 4, 30),
+        linked_balance=Decimal("-3500.00"),
+        balance_as_of=datetime.now(timezone.utc),
+    )
+    assert state["amount_source"] == "bank"
+    assert state["amount_remaining"] == 3500.0
+    assert state["months_remaining"] in (17, 18)
+
+
+def test_compute_with_stale_bank_balance_falls_back_to_calendar():
+    loan = {"start_date": date(2026, 1, 1), "total_months": 24,
+            "monthly_payment": 200.0, "initial_capital": 4000.0, "archived": 0}
+    stale = datetime.now(timezone.utc) - timedelta(days=30)
+    state = compute_loan_state(
+        loan, today=date(2026, 4, 30),
+        linked_balance=Decimal("-3500.00"), balance_as_of=stale,
+    )
+    assert state["amount_source"] == "calendar"
+
+
+def test_compute_without_link_uses_calendar():
+    loan = {"start_date": date(2026, 1, 1), "total_months": 24,
+            "monthly_payment": 200.0, "initial_capital": 4000.0, "archived": 0}
+    state = compute_loan_state(loan, today=date(2026, 4, 30))
+    assert state["amount_source"] == "calendar"
