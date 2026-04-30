@@ -112,10 +112,24 @@ class ConnectorManager:
                             except Exception:
                                 pass
                     elif evt_type in ("accounts", "balances", "positions", "transactions"):
-                        # Cache live data
+                        from src.normalizers import get_normalizer
                         if cid not in self.live_data:
                             self.live_data[cid] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
-                        self.live_data[cid][evt_type] = event.get("data", [])
+                        bucket = self.live_data[cid]
+                        data = event.get("data", [])
+                        normalizer = get_normalizer(handle.connector_type)
+                        if normalizer is None or evt_type == "transactions":
+                            bucket[evt_type] = data
+                        elif evt_type == "accounts":
+                            bucket["accounts"] = normalizer.normalize_accounts(data, connector_id=cid)
+                        elif evt_type == "positions":
+                            bucket["positions"] = normalizer.normalize_positions(
+                                data, bucket.get("accounts", [])
+                            )
+                        elif evt_type == "balances":
+                            bucket["balances"] = normalizer.normalize_balances(
+                                data, bucket.get("accounts", [])
+                            )
 
                     events.append(event)
                 except Exception:
