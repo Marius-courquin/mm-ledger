@@ -5,8 +5,8 @@ from sqlalchemy import select, insert, update, delete
 
 from src.api import deps
 from src.api.middleware import get_current_user, AuthUser
-from src.db.models import loans
-from src.schemas.loans import LoanCreate, LoanUpdate, LoanResponse, LoanSummary
+from src.db.models import loans, loan_account_link
+from src.schemas.loans import LoanCreate, LoanUpdate, LoanResponse, LoanSummary, LoanCandidate, LinkRequest
 from src.services.loan_calc import compute_loan_state
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
@@ -76,6 +76,110 @@ def loans_summary(user: AuthUser = Depends(get_current_user)):
         last_end_date=max((s["end_date"] for _, s in active), default=None),
         active_count=len(active),
     )
+
+
+@router.get("/candidates", response_model=list[LoanCandidate])
+def list_candidates(user: AuthUser = Depends(get_current_user)):
+    """Liste les comptes liability détectés non liés non ignorés."""
+    engine = deps.get_ledger(user.id)
+    with engine.connect() as conn:
+        link_rows = conn.execute(select(loan_account_link)).fetchall()
+    links_by_id = {r.account_id: r for r in link_rows}
+
+    out: list[LoanCandidate] = []
+    all_data = deps.manager.get_user_live_data(user.id)
+    for _cid, data in all_data.items():
+        balances_by_id = {b.account_id: b for b in data.get("balances", [])}
+        for acc in data.get("accounts", []):
+            if acc.kind != "liability":
+                continue
+            link = links_by_id.get(acc.id)
+            if link and (link.loan_id is not None or link.ignored):
+                continue
+            bal = balances_by_id.get(acc.id)
+            out.append(LoanCandidate(
+                account_id=acc.id,
+                label=acc.label,
+                balance=float(bal.total_value) if bal else 0.0,
+                currency=bal.currency if bal else acc.currency,
+                connector_type=acc.connector_type,
+                as_of=bal.as_of if bal else None,
+            ))
+    return out
+
+
+@router.post("/{loan_id}/link", response_model=LoanResponse)
+def link_account(
+    loan_id: int, payload: LinkRequest,
+    user: AuthUser = Depends(get_current_user),
+):
+    """Crée ou met à jour un lien prêt ↔ compte bancaire (account_id canonical)."""
+    engine = deps.get_ledger(user.id)
+    with engine.begin() as conn:
+        loan_row = conn.execute(select(loans).where(loans.c.id == loan_id)).fetchone()
+        if not loan_row:
+            raise HTTPException(404, "Prêt introuvable")
+        existing = conn.execute(
+            select(loan_account_link).where(loan_account_link.c.account_id == payload.account_id)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                update(loan_account_link).where(
+                    loan_account_link.c.account_id == payload.account_id
+                ).values(loan_id=loan_id, ignored=0)
+            )
+        else:
+            conn.execute(insert(loan_account_link).values(
+                account_id=payload.account_id, loan_id=loan_id, ignored=0,
+            ))
+    return _row_to_response(loan_row, _date.today())
+
+
+@router.delete("/{loan_id}/link", status_code=status.HTTP_204_NO_CONTENT)
+def unlink_account(loan_id: int, user: AuthUser = Depends(get_current_user)):
+    """Détache le compte (loan_id → NULL). ignored reste à 0 (le candidat réapparaît)."""
+    engine = deps.get_ledger(user.id)
+    with engine.begin() as conn:
+        conn.execute(
+            update(loan_account_link).where(
+                loan_account_link.c.loan_id == loan_id
+            ).values(loan_id=None)
+        )
+    return None
+
+
+@router.post("/candidates/{account_id}/ignore", status_code=status.HTTP_204_NO_CONTENT)
+def ignore_candidate(account_id: str, user: AuthUser = Depends(get_current_user)):
+    """Marque un candidat comme ignoré (n'apparaîtra plus dans la liste)."""
+    engine = deps.get_ledger(user.id)
+    with engine.begin() as conn:
+        existing = conn.execute(
+            select(loan_account_link).where(loan_account_link.c.account_id == account_id)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                update(loan_account_link).where(
+                    loan_account_link.c.account_id == account_id
+                ).values(ignored=1)
+            )
+        else:
+            conn.execute(insert(loan_account_link).values(
+                account_id=account_id, ignored=1,
+            ))
+    return None
+
+
+@router.delete("/candidates/{account_id}/ignore", status_code=status.HTTP_204_NO_CONTENT)
+def unignore_candidate(account_id: str, user: AuthUser = Depends(get_current_user)):
+    """Annule l'état ignoré (le compte redevient candidat)."""
+    engine = deps.get_ledger(user.id)
+    with engine.begin() as conn:
+        conn.execute(
+            update(loan_account_link).where(
+                loan_account_link.c.account_id == account_id
+            ).values(ignored=0)
+        )
+    return None
 
 
 @router.get("/{loan_id}", response_model=LoanResponse)

@@ -1,3 +1,4 @@
+from datetime import datetime
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -46,3 +47,16 @@ class LoanSummary(BaseModel):
     total_amount_remaining: float
     last_end_date: str | None
     active_count: int
+
+
+class LoanCandidate(BaseModel):
+    account_id: str
+    label: str
+    balance: float
+    currency: str
+    connector_type: str
+    as_of: datetime | None = None
+
+
+class LinkRequest(BaseModel):
+    account_id: str
