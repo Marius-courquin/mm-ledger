@@ -145,8 +145,6 @@ loan_account_link = Table(
     Column("account_id", Text, primary_key=True),
     Column("loan_id", Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True),
     Column("ignored", Integer, nullable=False, server_default="0"),
-    Column("last_balance", Real, nullable=True),
-    Column("last_seen_at", Text, nullable=True),
     Column("created_at", Text, nullable=False, server_default="(datetime('now'))"),
 )
 
