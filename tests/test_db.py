@@ -91,3 +91,27 @@ def test_wal_mode_enabled():
             mode = result.scalar()
             assert mode == "wal"
         engine.dispose()
+
+
+def test_loan_account_link_table_exists(tmp_path):
+    """La table loan_account_link doit être créée et accepter un insert."""
+    from sqlalchemy import insert, select
+    from src.db.engine import create_engine_and_tables
+    from src.db.models import loans, loan_account_link
+
+    engine = create_engine_and_tables(tmp_path / "ledger.db")
+    with engine.begin() as conn:
+        result = conn.execute(insert(loans).values(
+            name="Test", loan_type="conso",
+            initial_capital=1000, monthly_payment=100,
+            total_months=10, start_date="2026-01-01",
+        ))
+        loan_id = result.inserted_primary_key[0]
+        conn.execute(insert(loan_account_link).values(
+            account_id="woob:bp:abc", loan_id=loan_id,
+        ))
+        rows = conn.execute(select(loan_account_link)).fetchall()
+        assert len(rows) == 1
+        assert rows[0].account_id == "woob:bp:abc"
+        assert rows[0].loan_id == loan_id
+        assert rows[0].ignored == 0
