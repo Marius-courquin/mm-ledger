@@ -18,6 +18,7 @@ from src.manager import ConnectorManager
 import src.normalizers.trade_republic  # noqa: F401
 import src.normalizers.woob_bank  # noqa: F401
 import src.normalizers.enable_banking  # noqa: F401
+import src.normalizers.ibkr  # noqa: F401
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
