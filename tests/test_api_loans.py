@@ -181,3 +181,27 @@ def test_unignore_candidate_restores_visibility(client):
     assert resp.status_code == 204
     resp = client.get("/api/loans/candidates")
     assert len(resp.json()) == 1
+
+
+def test_from_account_creates_loan_and_link(client):
+    """POST /api/loans/from-account crée un loan + le lien atomiquement, le candidat disparaît."""
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+
+    resp = client.post("/api/loans/from-account", json={
+        "account_id": "woob:bp:abc999",
+        "name": "Prêt depuis banque",
+        "loan_type": "conso",
+        "initial_capital": 4000,
+        "monthly_payment": 200,
+        "total_months": 20,
+        "start_date": "2026-01-01",
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "Prêt depuis banque"
+    assert body["initial_capital"] == 4000
+
+    # Le candidat ne doit plus apparaître
+    candidates = client.get("/api/loans/candidates").json()
+    assert all(c["account_id"] != "woob:bp:abc999" for c in candidates)

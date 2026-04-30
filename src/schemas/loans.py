@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, date
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -60,3 +60,13 @@ class LoanCandidate(BaseModel):
 
 class LinkRequest(BaseModel):
     account_id: str
+
+
+class FromAccountRequest(BaseModel):
+    account_id: str
+    name: str
+    loan_type: Literal["immo", "conso", "auto", "other"] = "conso"
+    initial_capital: float
+    monthly_payment: float
+    total_months: int
+    start_date: date

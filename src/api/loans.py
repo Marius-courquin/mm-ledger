@@ -6,7 +6,7 @@ from sqlalchemy import select, insert, update, delete
 from src.api import deps
 from src.api.middleware import get_current_user, AuthUser
 from src.db.models import loans, loan_account_link
-from src.schemas.loans import LoanCreate, LoanUpdate, LoanResponse, LoanSummary, LoanCandidate, LinkRequest
+from src.schemas.loans import LoanCreate, LoanUpdate, LoanResponse, LoanSummary, LoanCandidate, LinkRequest, FromAccountRequest
 from src.services.loan_calc import compute_loan_state
 
 router = APIRouter(prefix="/api/loans", tags=["loans"])
@@ -180,6 +180,39 @@ def unignore_candidate(account_id: str, user: AuthUser = Depends(get_current_use
             ).values(ignored=0)
         )
     return None
+
+
+@router.post("/from-account", response_model=LoanResponse, status_code=status.HTTP_201_CREATED)
+def create_from_account(
+    payload: FromAccountRequest,
+    user: AuthUser = Depends(get_current_user),
+):
+    """Crée un loan + crée le lien vers account_id en une seule transaction."""
+    engine = deps.get_ledger(user.id)
+    with engine.begin() as conn:
+        result = conn.execute(insert(loans).values(
+            name=payload.name, loan_type=payload.loan_type,
+            initial_capital=payload.initial_capital,
+            monthly_payment=payload.monthly_payment,
+            total_months=payload.total_months,
+            start_date=payload.start_date,
+        ))
+        lid = result.inserted_primary_key[0]
+        existing = conn.execute(
+            select(loan_account_link).where(loan_account_link.c.account_id == payload.account_id)
+        ).fetchone()
+        if existing:
+            conn.execute(
+                update(loan_account_link).where(
+                    loan_account_link.c.account_id == payload.account_id
+                ).values(loan_id=lid, ignored=0)
+            )
+        else:
+            conn.execute(insert(loan_account_link).values(
+                account_id=payload.account_id, loan_id=lid, ignored=0,
+            ))
+        row = conn.execute(select(loans).where(loans.c.id == lid)).fetchone()
+    return _row_to_response(row, _date.today())
 
 
 @router.get("/{loan_id}", response_model=LoanResponse)
