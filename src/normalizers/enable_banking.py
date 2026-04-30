@@ -1,4 +1,10 @@
-"""Normalizer Enable Banking (PSD2)."""
+"""Normalizer Enable Banking (PSD2).
+
+⚠️ TODO : Enable Banking ne passe pas (encore) par ConnectorManager — son API
+(`src/api/banking.py`) appelle directement le client HTTP. Ce normalizer ne sera
+invoqué que quand `banking` aura un ConnectorWorker dans le manager. Garder le
+code aligné pour le jour où ce sera le cas.
+"""
 from datetime import datetime, timezone
 from decimal import Decimal
 
