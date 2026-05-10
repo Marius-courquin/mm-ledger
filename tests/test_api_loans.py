@@ -1,3 +1,6 @@
+from datetime import datetime, timezone
+from decimal import Decimal
+
 from src.api import deps
 from src.auth import decode_jwt
 
@@ -94,3 +97,144 @@ def test_summary(client):
 def test_unauth(client):
     r = client.get("/api/loans")
     assert r.status_code == 401
+
+
+# ---------------------------------------------------------------------------
+# Helpers pour les tests candidates / link / ignore
+# ---------------------------------------------------------------------------
+
+def _setup_liability_in_live_data(
+    user_id: str,
+    account_id: str = "woob:bp:abc999",
+    label: str = "Vcc - Pret Jeune",
+    balance: float = -4000.0,
+):
+    """Injecte un compte liability + balance dans manager.live_data."""
+    from src.normalizers.types import CanonicalAccount, CanonicalBalance
+
+    deps.manager.live_data[f"{user_id}:woob-1"] = {
+        "accounts": [CanonicalAccount(
+            id=account_id,
+            connector_id=f"{user_id}:woob-1",
+            connector_type="woob_bank",
+            label=label,
+            kind="liability",
+        )],
+        "balances": [CanonicalBalance(
+            account_id=account_id,
+            total_value=Decimal(str(balance)),
+            cash=Decimal(str(balance)),
+            as_of=datetime.now(timezone.utc),
+        )],
+        "positions": [],
+        "transactions": [],
+    }
+
+
+def test_candidates_returns_unlinked_liability_accounts(client):
+    """GET /api/loans/candidates retourne les comptes liability non liés non ignorés."""
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+    resp = client.get("/api/loans/candidates")
+    assert resp.status_code == 200
+    data = resp.json()
+    assert len(data) == 1
+    assert data[0]["account_id"] == "woob:bp:abc999"
+    assert data[0]["balance"] == -4000.0
+    assert data[0]["connector_type"] == "woob_bank"
+
+
+def test_candidates_excludes_linked_accounts(client):
+    """Un compte lié à un loan ne doit plus apparaître dans candidates."""
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+    # Crée un loan
+    resp = client.post("/api/loans", json={
+        "name": "Prêt Jeune", "loan_type": "conso",
+        "initial_capital": 4000, "monthly_payment": 200,
+        "total_months": 20, "start_date": "2026-01-01",
+    })
+    loan_id = resp.json()["id"]
+    # Lien
+    resp = client.post(f"/api/loans/{loan_id}/link",
+                       json={"account_id": "woob:bp:abc999"})
+    assert resp.status_code == 200
+    # Le candidat ne doit plus apparaître
+    resp = client.get("/api/loans/candidates")
+    assert resp.json() == []
+
+
+def test_candidates_excludes_ignored_accounts(client):
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+    resp = client.post("/api/loans/candidates/woob:bp:abc999/ignore")
+    assert resp.status_code == 204
+    resp = client.get("/api/loans/candidates")
+    assert resp.json() == []
+
+
+def test_unignore_candidate_restores_visibility(client):
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+    client.post("/api/loans/candidates/woob:bp:abc999/ignore")
+    resp = client.delete("/api/loans/candidates/woob:bp:abc999/ignore")
+    assert resp.status_code == 204
+    resp = client.get("/api/loans/candidates")
+    assert len(resp.json()) == 1
+
+
+def test_from_account_creates_loan_and_link(client):
+    """POST /api/loans/from-account crée un loan + le lien atomiquement, le candidat disparaît."""
+    user_id = _setup(client)
+    _setup_liability_in_live_data(user_id)
+
+    resp = client.post("/api/loans/from-account", json={
+        "account_id": "woob:bp:abc999",
+        "name": "Prêt depuis banque",
+        "loan_type": "conso",
+        "initial_capital": 4000,
+        "monthly_payment": 200,
+        "total_months": 20,
+        "start_date": "2026-01-01",
+    })
+    assert resp.status_code == 201
+    body = resp.json()
+    assert body["name"] == "Prêt depuis banque"
+    assert body["initial_capital"] == 4000
+
+    # Le candidat ne doit plus apparaître
+    candidates = client.get("/api/loans/candidates").json()
+    assert all(c["account_id"] != "woob:bp:abc999" for c in candidates)
+
+
+def _login_and_setup(client) -> str:
+    """Alias de _setup pour la lisibilité dans les nouveaux tests."""
+    return _setup(client)
+
+
+def test_get_loan_uses_bank_balance_when_linked(client):
+    """Quand un loan est lié à un compte bancaire avec un solde récent, l'amount_remaining
+    reflète le solde bancaire (pas le calcul calendaire)."""
+    user_id = _login_and_setup(client)
+    _setup_liability_in_live_data(user_id, balance=-3500.0)
+
+    # Crée un loan
+    resp = client.post("/api/loans", json={
+        "name": "Prêt", "loan_type": "conso",
+        "initial_capital": 4000, "monthly_payment": 200,
+        "total_months": 20, "start_date": "2026-01-01",
+    })
+    assert resp.status_code == 201
+    loan_id = resp.json()["id"]
+
+    # Lie au compte
+    resp = client.post(f"/api/loans/{loan_id}/link", json={"account_id": "woob:bp:abc999"})
+    assert resp.status_code == 200
+
+    # GET le loan : amount_remaining doit refléter |3500| = 3500, pas 200*20=4000
+    resp = client.get(f"/api/loans/{loan_id}")
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["linked_account_id"] == "woob:bp:abc999"
+    assert body["amount_source"] == "bank"
+    assert body["amount_remaining"] == 3500.0

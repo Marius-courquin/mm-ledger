@@ -217,3 +217,43 @@ def test_history_data_event_is_persisted_to_db(tmp_path, monkeypatch):
     dates = sorted(r.date for r in rows)
     assert dates == ["2026-01-01", "2026-01-02", "2026-01-03"]
     mgr.stop("user42:histconn")
+
+
+def test_worker_handle_stores_connector_type():
+    mgr = ConnectorManager()
+    mgr.register_worker_class("fake", FakeWorker)
+    mgr.spawn("user1:test", "fake", credentials={})
+    try:
+        assert mgr._workers["user1:test"].connector_type == "fake"
+    finally:
+        mgr.stop_all()
+
+
+def test_collect_events_normalizes_accounts():
+    """Après dispatch d'un event 'accounts' raw TR, live_data contient du canonical."""
+    import time
+    from src.normalizers.types import CanonicalAccount
+    import src.normalizers.trade_republic  # noqa: enregistre TRNormalizer
+    from src.manager import ConnectorManager, WorkerHandle
+    from multiprocessing import Process, Queue
+
+    mgr = ConnectorManager()
+    cmd_q, event_q = Queue(), Queue()
+    proc = Process(target=lambda: None)  # not started — bypass spawn
+    mgr._workers["user1:tr-1"] = WorkerHandle(
+        process=proc, cmd_queue=cmd_q, event_queue=event_q,
+        connector_type="trade_republic",
+    )
+    mgr.live_data["user1:tr-1"] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
+
+    event_q.put({"type": "accounts", "data": [
+        {"securitiesAccountNumber": "DA1234", "cashAccountNumber": "CA1234", "productType": "TAX_WRAPPER"},
+    ]})
+    time.sleep(0.05)  # multiprocessing.Queue.empty() peut renvoyer True juste après put
+
+    mgr.collect_events()
+    accs = mgr.live_data["user1:tr-1"]["accounts"]
+    assert len(accs) == 1
+    assert isinstance(accs[0], CanonicalAccount)
+    assert accs[0].id == "tr:DA1234"
+    assert accs[0].label == "PEA"

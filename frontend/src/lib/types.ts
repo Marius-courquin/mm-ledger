@@ -6,7 +6,7 @@ export interface VaultStatus {
 
 // ── Connectors ───────────────────────────────────────────────────────────────
 
-export type ConnectorType = 'trade_republic' | 'ibkr' | 'woob_bank';
+export type ConnectorType = 'trade_republic' | 'ibkr' | 'woob_bank' | 'banking';
 export type WorkerState = 'disconnected' | 'connecting' | 'starting_gateway' | 'connected' | 'waiting_2fa' | 'error';
 
 export interface WorkerInfo {
@@ -48,23 +48,29 @@ export interface ConnectorTypeInfo {
 
 // ── Accounts & Balances ──────────────────────────────────────────────────────
 
-export type AccountType = 'cto' | 'pea' | 'checking' | 'savings' | 'margin';
+export type AccountKind = 'cash' | 'securities' | 'liability';
+export type TaxWrapper =
+  | 'none' | 'cto' | 'pea' | 'pea_pme' | 'per' | 'av'
+  | 'livret_a' | 'livret_jeune' | 'ldds' | 'lep' | 'cel' | 'pel';
+export type AssetClass = 'equity' | 'etf' | 'bond' | 'crypto' | 'private' | 'other';
 
 export interface Account {
   id: string;
   connector_id: string;
+  connector_type: ConnectorType | string;
   name: string;
-  type: AccountType;
+  kind: AccountKind;
+  tax_wrapper: TaxWrapper;
   currency: string;
 }
 
 export interface Balance {
   account_id: string;
-  cash: number;
-  positions_value: number;
+  cash: number | null;
+  positions_value: number | null;
   total_value: number;
   currency: string;
-  updated_at: string;
+  updated_at: string | null;
 }
 
 // ── Portfolio ────────────────────────────────────────────────────────────────
@@ -75,46 +81,33 @@ export interface Position {
   instrument: string;
   name: string;
   symbol: string;
-  category: string;
+  asset_class: AssetClass;
+  category: string;        // = asset_class, retrocompat
   quantity: number;
-  avg_price: number;
-  current_price: number;
-  value: number;
-  pnl: number;
-  pnl_pct: number;
+  avg_price: number | null;
+  current_price: number | null;
+  value: number | null;
+  pnl: number | null;
+  pnl_pct: number | null;
   currency: string;
-}
-
-export interface PortfolioCategory {
-  categoryType: string;
-  total_value: number;
-  total_invested: number;
-  pnl: number;
-  pnl_pct: number;
-  positions: Position[];
 }
 
 export interface PortfolioAccount {
-  secAccNo: string;
+  account_id: string;
   label: string;
-  productType: string;
+  kind: AccountKind;
+  tax_wrapper: TaxWrapper;
   cash: number;
-  positions_value: number;
   total_value: number;
   total_invested: number;
-  pnl: number;
-  pnl_pct: number;
-  categories: PortfolioCategory[];
+  positions: Position[];
 }
 
 export interface Portfolio {
-  total_value: number;
-  total_cash: number;
-  total_invested: number;
-  total_pnl: number;
-  total_pnl_pct: number;
-  currency: string;
   accounts: PortfolioAccount[];
+  total_cash: number;
+  total_value: number;
+  total_invested: number;
 }
 
 // ── Snapshots ────────────────────────────────────────────────────────────────

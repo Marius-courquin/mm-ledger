@@ -1,16 +1,18 @@
 import { useEffect, useState } from 'react';
-import { createLoan, updateLoan } from '@/api/loans';
-import type { Loan, LoanType, LoanCreatePayload } from '@/lib/loans';
+import { createLoan, createLoanFromAccount, updateLoan } from '@/api/loans';
+import type { Loan, LoanCandidate, LoanType, LoanCreatePayload } from '@/lib/loans';
 import { LOAN_TYPE_LABELS } from '@/lib/loans';
 
 interface Props {
   isOpen: boolean;
   loan?: Loan | null;
+  /** Si fourni, la modale crée le prêt via createLoanFromAccount et lie le compte. */
+  fromCandidate?: LoanCandidate | null;
   onClose: () => void;
   onSaved: () => void;
 }
 
-export function LoanFormModal({ isOpen, loan, onClose, onSaved }: Props) {
+export function LoanFormModal({ isOpen, loan, fromCandidate, onClose, onSaved }: Props) {
   const editing = !!loan;
   const [name, setName] = useState('');
   const [loanType, setLoanType] = useState<LoanType>('immo');
@@ -30,12 +32,19 @@ export function LoanFormModal({ isOpen, loan, onClose, onSaved }: Props) {
       setMonthlyPayment(String(loan.monthly_payment));
       setTotalMonths(String(loan.total_months));
       setStartDate(loan.start_date);
+    } else if (fromCandidate) {
+      setName(fromCandidate.label);
+      setLoanType('immo');
+      setInitialCapital(String(Math.abs(fromCandidate.balance)));
+      setMonthlyPayment('');
+      setTotalMonths('');
+      setStartDate('');
     } else {
       setName(''); setLoanType('immo'); setInitialCapital('');
       setMonthlyPayment(''); setTotalMonths(''); setStartDate('');
     }
     setError(null);
-  }, [isOpen, loan]);
+  }, [isOpen, loan, fromCandidate]);
 
   async function submit() {
     setError(null);
@@ -52,8 +61,13 @@ export function LoanFormModal({ isOpen, loan, onClose, onSaved }: Props) {
     };
     setSubmitting(true);
     try {
-      if (editing && loan) await updateLoan(loan.id, payload);
-      else await createLoan(payload);
+      if (editing && loan) {
+        await updateLoan(loan.id, payload);
+      } else if (fromCandidate) {
+        await createLoanFromAccount({ ...payload, account_id: fromCandidate.account_id });
+      } else {
+        await createLoan(payload);
+      }
       onSaved();
       onClose();
     } catch (e: any) {
@@ -72,7 +86,7 @@ export function LoanFormModal({ isOpen, loan, onClose, onSaved }: Props) {
         onClick={(e) => e.stopPropagation()}
       >
         <h2 className="text-lg font-semibold text-mm-text">
-          {editing ? 'Modifier le prêt' : 'Nouveau prêt'}
+          {editing ? 'Modifier le prêt' : fromCandidate ? `Créer un prêt depuis "${fromCandidate.label}"` : 'Nouveau prêt'}
         </h2>
         <div className="flex flex-col gap-3">
           <Field label="Nom">

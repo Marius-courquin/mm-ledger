@@ -14,6 +14,12 @@ from src.auth import get_or_create_jwt_secret
 from src.api.middleware import set_jwt_secret
 from src.manager import ConnectorManager
 
+# Enregistre tous les normalizers (effets de bord à l'import)
+import src.normalizers.trade_republic  # noqa: F401
+import src.normalizers.woob_bank  # noqa: F401
+import src.normalizers.enable_banking  # noqa: F401
+import src.normalizers.ibkr  # noqa: F401
+
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
     data = data_dir or DATA_DIR

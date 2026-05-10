@@ -140,6 +140,16 @@ loans = Table(
     Column("created_at", Text, server_default="(datetime('now'))"),
 )
 
+loan_account_link = Table(
+    "loan_account_link", metadata,
+    Column("account_id", Text, primary_key=True),
+    Column("loan_id", Integer, ForeignKey("loans.id", ondelete="SET NULL"), nullable=True),
+    Column("ignored", Integer, nullable=False, server_default="0"),
+    Column("created_at", Text, nullable=False, server_default="(datetime('now'))"),
+)
+
+Index("idx_loan_account_link_loan", loan_account_link.c.loan_id)
+
 projection_settings = Table(
     "projection_settings", metadata,
     Column("id", Integer, primary_key=True),  # toujours = 1

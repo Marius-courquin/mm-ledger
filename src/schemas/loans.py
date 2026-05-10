@@ -1,3 +1,4 @@
+from datetime import datetime, date
 from typing import Literal
 from pydantic import BaseModel, Field
 
@@ -39,6 +40,10 @@ class LoanResponse(LoanBase):
     amount_remaining: float
     progress_pct: float
     is_active: bool
+    # Lien compte bancaire (optionnel) :
+    linked_account_id: str | None = None
+    linked_label: str | None = None
+    amount_source: Literal["calendar", "bank"] = "calendar"
 
 
 class LoanSummary(BaseModel):
@@ -46,3 +51,26 @@ class LoanSummary(BaseModel):
     total_amount_remaining: float
     last_end_date: str | None
     active_count: int
+
+
+class LoanCandidate(BaseModel):
+    account_id: str
+    label: str
+    balance: float
+    currency: str
+    connector_type: str
+    as_of: datetime | None = None
+
+
+class LinkRequest(BaseModel):
+    account_id: str
+
+
+class FromAccountRequest(BaseModel):
+    account_id: str
+    name: str
+    loan_type: Literal["immo", "conso", "auto", "other"] = "conso"
+    initial_capital: float
+    monthly_payment: float
+    total_months: int
+    start_date: date

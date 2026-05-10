@@ -23,6 +23,7 @@ class WorkerHandle:
     process: Process
     cmd_queue: Queue
     event_queue: Queue
+    connector_type: str = ""
     state: str = "connecting"
     detail: str | None = None
     started_at: float = field(default_factory=time.time)
@@ -54,7 +55,7 @@ class ConnectorManager:
             daemon=True,
         )
         proc.start()
-        handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q)
+        handle = WorkerHandle(process=proc, cmd_queue=cmd_q, event_queue=event_q, connector_type=connector_type)
         self._workers[connector_id] = handle
         self.live_data[connector_id] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
         cmd_q.put({"type": "connect", "credentials": credentials, "session_blob": session_blob})
@@ -111,10 +112,24 @@ class ConnectorManager:
                             except Exception:
                                 pass
                     elif evt_type in ("accounts", "balances", "positions", "transactions"):
-                        # Cache live data
+                        from src.normalizers import get_normalizer
                         if cid not in self.live_data:
                             self.live_data[cid] = {"accounts": [], "balances": [], "positions": [], "transactions": []}
-                        self.live_data[cid][evt_type] = event.get("data", [])
+                        bucket = self.live_data[cid]
+                        data = event.get("data", [])
+                        normalizer = get_normalizer(handle.connector_type)
+                        if normalizer is None or evt_type == "transactions":
+                            bucket[evt_type] = data
+                        elif evt_type == "accounts":
+                            bucket["accounts"] = normalizer.normalize_accounts(data, connector_id=cid)
+                        elif evt_type == "positions":
+                            bucket["positions"] = normalizer.normalize_positions(
+                                data, bucket.get("accounts", [])
+                            )
+                        elif evt_type == "balances":
+                            bucket["balances"] = normalizer.normalize_balances(
+                                data, bucket.get("accounts", [])
+                            )
 
                     events.append(event)
                 except Exception:

@@ -1,5 +1,7 @@
 export type LoanType = 'immo' | 'conso' | 'auto' | 'other';
 
+export type AmountSource = 'calendar' | 'bank';
+
 export interface Loan {
   id: number;
   name: string;
@@ -16,6 +18,18 @@ export interface Loan {
   amount_remaining: number;
   progress_pct: number;
   is_active: boolean;
+  linked_account_id: string | null;
+  linked_label: string | null;
+  amount_source: AmountSource;
+}
+
+export interface LoanCandidate {
+  account_id: string;
+  label: string;
+  balance: number;
+  currency: string;
+  connector_type: string;
+  as_of: string | null;
 }
 
 export interface LoanCreatePayload {
